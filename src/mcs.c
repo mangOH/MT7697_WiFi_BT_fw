@@ -447,7 +447,7 @@ void tcpTimerCallback( TimerHandle_t pxTimer )
 }
 
 /* tcp connection */
-int32_t mcs_tcp_init(void (*mcs_tcp_callback)(char *))
+/*int32_t mcs_tcp_init(void (*mcs_tcp_callback)(char *))
 {
     //int s;
     //int c;
@@ -457,12 +457,12 @@ int32_t mcs_tcp_init(void (*mcs_tcp_callback)(char *))
     int rcv_len, rlen;
 
     //int32_t mcs_ret = MCS_TCP_DISCONNECT;
-
+*/
     /* Setting the TCP ip */
-    if (HTTPCLIENT_OK != getInitialTCPIP()) {
+/*    if (HTTPCLIENT_OK != getInitialTCPIP()) {
         return MCS_TCP_INIT_ERROR;
     }
-
+*/
     /* deviceId */
     //char deviceId[20] = {0};
     //int nvdm_deviceId_len = sizeof(deviceId);
@@ -475,7 +475,7 @@ int32_t mcs_tcp_init(void (*mcs_tcp_callback)(char *))
 
     /* command buffer */
     //char cmd_buf [50]= {0};
-    strcat(g_cmd_buf, g_device_id);
+/*    strcat(g_cmd_buf, g_device_id);
     strcat(g_cmd_buf, ",");
     strcat(g_cmd_buf, g_device_key);
     strcat(g_cmd_buf, ",0");
@@ -486,9 +486,9 @@ mcs_tcp_connect:
     addr.sin_family = AF_INET;
     addr.sin_port = htons(SOCK_TCP_SRV_PORT);
     addr.sin_addr.s_addr =inet_addr(TCP_ip);
-
+*/
     /* create the socket */
-    g_socket_id = lwip_socket(AF_INET, SOCK_STREAM, 0);
+/*    g_socket_id = lwip_socket(AF_INET, SOCK_STREAM, 0);
     if (g_socket_id < 0) {
         //mcs_ret = MCS_TCP_SOCKET_INIT_ERROR;
         LOG_E(MCS, "tcp client create fail 0 !");
@@ -523,9 +523,9 @@ mcs_tcp_connect:
         }
 
         LOG_I(MCS, "MCS tcp-client received data:%s", rcv_buf);
-
+*/
         /* split the string of rcv_buffer */
-        char split_buf[MAX_STRING_SIZE] = {0};
+/*        char split_buf[MAX_STRING_SIZE] = {0};
         strcpy(split_buf, rcv_buf);
 
         char *arr[7];
@@ -552,7 +552,7 @@ mcs_tcp_connect:
 idle:
     LOG_I(MCS, "MCS tcp-client end");
     return MCS_TCP_DISCONNECT;
-}
+}*/
 
 /* 0 : off, 1: on */
 int get_gpio33_led(void)
@@ -681,8 +681,8 @@ int mcs_get_gpio33_led(void)
 */
 void mcs_update(int status_id, int onoff, char* displaystr)
 {
-    if ( is_lwip_net_ready() == 0 )
-        return; //ip is not ready
+//    if ( is_lwip_net_ready() == 0 )
+//        return; //ip is not ready
         
     char statusbuf[1024] = {0};
     switch(status_id)
@@ -956,13 +956,14 @@ void mcs_setting_print(void)
     LOG_I(MCS, "BLE Scan Table ID : %s", g_id_ble_scan_tab);
     LOG_I(MCS, "************** End **************");
 }
+/*
 void mcs_initial_task(void * arg) {
   //check connection and ip is ready then go
-  lwip_net_ready();
+//  lwip_net_ready();
   LOG_I(MCS, "mcs_initial_task : get ip ready !");
-  mcs_tcp_init(mcs_tcp_callback);
+//  mcs_tcp_init(mcs_tcp_callback);
   vTaskDelete(NULL);
-}
+}*/
 
 void mcs_nvdm_initial(void)
 {
@@ -1065,7 +1066,7 @@ void mcs_init(void)
 {
     register_action_btn_proc();
     mcs_nvdm_initial();
-    xTaskCreate(mcs_initial_task, "MCS initial", 2048, NULL, 4, NULL);
+//    xTaskCreate(mcs_initial_task, "MCS initial", 2048, NULL, 4, NULL);
 }
 
 #ifdef MTK_BLE_GPIO_SERVICE

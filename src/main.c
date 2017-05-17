@@ -74,6 +74,7 @@ extern void tickless_init(void);
 #endif
 
 #include "spi_slave_queues.h"
+#include "spi_slave_wifi.h"
 
 #ifdef BLE_THROUGHPUT
 extern void ble_gatt_send_data();
@@ -99,6 +100,8 @@ void ble_tp_task(void *param)
   */
 int main(void)
 {
+    int ret;
+
     /* Do system initialization, eg: hardware, nvdm, logging and random seed. */
     system_init();
 
@@ -156,12 +159,39 @@ int main(void)
      *            when it is done , the WIFI_EVENT_IOT_INIT_COMPLETE event will be triggered */
     wifi_init(&config, &config_ext);
 
-    wifi_connection_register_event_handler(WIFI_EVENT_IOT_INIT_COMPLETE, wifi_init_done_handler);
-
+    ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_INIT_COMPLETE, wifi_init_done_handler);
+    if (ret < 0) {
+	LOG_E(common, "wifi_connection_register_event_handler() failed(%d)", ret);
+	goto cleanup;
+    }
 
     /* Tcpip stack and net interface initialization,  dhcp client, dhcp server process initialization*/
-    lwip_network_init(config.opmode);
-    lwip_net_start(config.opmode);
+    lwip_tcpip_config_t tcpip_config = {{0}, {0}, {0}, {0}, {0}, {0}};
+    lwip_tcpip_init(&tcpip_config, config.opmode);
+
+    ret = spi_queue_init();
+    if (ret < 0) {
+	LOG_E(common, "spi_queue_init() failed(%d)", ret);
+	goto cleanup;
+    }
+
+    ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_CONNECTED, wifi_station_connected_event_handler);
+    if (ret < 0) {
+	LOG_E(common, "wifi_connection_register_event_handler() failed(%d)", ret);
+	goto cleanup;
+    }
+
+    ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_PORT_SECURE, wifi_station_port_secure_event_handler);
+    if (ret < 0) {
+	LOG_E(common, "wifi_connection_register_event_handler() failed(%d)", ret);
+	goto cleanup;
+    }
+
+    ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_DISCONNECTED, wifi_station_disconnected_event_handler);
+    if (ret < 0) {
+	LOG_E(common, "wifi_connection_register_event_handler() failed(%d)", ret);
+	goto cleanup;
+    }
 
 #ifdef MTK_WIFI_CONFIGURE_FREE_ENABLE
         uint8_t configured = 0;
@@ -188,14 +218,14 @@ int main(void)
 #endif
 
 #if defined(MTK_BT_LWIP_ENABLE)
-    bt_lwip_init();
+//    bt_lwip_init();
 #endif
 
-    bt_create_task();
+//    bt_create_task();
 
 #ifdef BLE_THROUGHPUT
-    ble_tp_queue = xQueueCreate(100, 8);
-    xTaskCreate(ble_tp_task, BLE_TP_TASK_NAME, BLE_TP_TASK_STACKSIZE/sizeof(StackType_t), NULL, BLE_TP_TASK_PRIORITY, NULL);
+//    ble_tp_queue = xQueueCreate(100, 8);
+//    xTaskCreate(ble_tp_task, BLE_TP_TASK_NAME, BLE_TP_TASK_STACKSIZE/sizeof(StackType_t), NULL, BLE_TP_TASK_PRIORITY, NULL);
 #endif
 
     //add for MTK cloud support
@@ -207,10 +237,9 @@ int main(void)
 
 #endif
 
-    spi_queue_init();
-
     vTaskStartScheduler();
 
+cleanup:
     /* If all is well, the scheduler will now be running, and the following line
     will never be reached.  If the following line does execute, then there was
     insufficient FreeRTOS heap memory available for the idle and/or timer tasks

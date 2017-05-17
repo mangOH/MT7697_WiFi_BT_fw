@@ -83,12 +83,7 @@ typedef struct {
 
 } wifi_cfg_t;
 
-
-void dhcpd_settings_init(const lwip_tcpip_config_t *tcpip_config, dhcpd_settings_t *dhcpd_settings);
-int32_t tcpip_config_init(lwip_tcpip_config_t *tcpip_config);
 int32_t wifi_config_init(wifi_cfg_t *wifi_config);
-int32_t dhcp_config_init(void);
-int32_t wifi_init_done_handler(wifi_event_t event, uint8_t *payload, uint32_t length);
 int save_cf_credential_to_nvdm(P_IOT_CONFIG_FREE_IE cred);
 int32_t save_cf_ready_to_nvdm(uint8_t config_ready);
 int32_t get_cf_ready_to_nvdm(uint8_t *config_ready);

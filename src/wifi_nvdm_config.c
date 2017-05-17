@@ -1205,7 +1205,6 @@ static void save_shared_key(uint8_t *wep_key, uint8_t *raw_wep_key, uint8_t leng
 int32_t wifi_config_init(wifi_cfg_t *wifi_config)
 {
 #ifdef MTK_WIFI_PROFILE_ENABLE
-
     // init wifi profile
     uint8_t buff[PROFILE_BUF_LEN];
     uint32_t len = sizeof(buff);
@@ -1331,125 +1330,6 @@ int32_t wifi_config_init(wifi_cfg_t *wifi_config)
 #endif
     return 0;
 }
-
-int32_t dhcp_config_init(void)
-{
-    uint8_t buff[PROFILE_BUF_LEN] = {0};
-    uint32_t sz = sizeof(buff);
-
-    nvdm_read_data_item("STA", "IpMode", buff, &sz);
-    return strcmp((char *)buff, "dhcp") ? STA_IP_MODE_STATIC : STA_IP_MODE_DHCP;
-}
-
-int32_t tcpip_config_init(lwip_tcpip_config_t *tcpip_config)
-{
-    uint8_t ip_addr[4] = {0};
-    uint8_t buff[PROFILE_BUF_LEN] = {0};
-    uint32_t sz = sizeof(buff);
-
-    nvdm_read_data_item("common", "IpAddr", buff, &sz);
-    wifi_conf_get_ip_from_str(ip_addr, (char *)buff);
-    IP4_ADDR(&tcpip_config->sta_addr, ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
-    IP4_ADDR(&tcpip_config->ap_addr, ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
-    sz = sizeof(buff);
-    nvdm_read_data_item("common", "IpNetmask", buff, &sz);
-    wifi_conf_get_ip_from_str(ip_addr, (char *)buff);
-    IP4_ADDR(&tcpip_config->sta_mask, ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
-    IP4_ADDR(&tcpip_config->ap_mask, ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
-    sz = sizeof(buff);
-    nvdm_read_data_item("common", "IpGateway", buff, &sz);
-    wifi_conf_get_ip_from_str(ip_addr, (char *)buff);
-    IP4_ADDR(&tcpip_config->sta_gateway, ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
-    IP4_ADDR(&tcpip_config->ap_gateway, ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
-    return 0;
-}
-
-static uint32_t ip_number_to_big_endian(uint32_t ip_number)
-{
-    uint8_t *byte = (uint8_t *)&ip_number;
-    return (uint32_t)((byte[0] << 24) | (byte[1] << 16) | (byte[2] << 8) | byte[3]);
-}
-
-static void ip_number_to_string(uint32_t ip_number, char ip_string[IP4ADDR_STRLEN_MAX])
-{
-    snprintf(ip_string,
-                IP4ADDR_STRLEN_MAX,
-                "%d.%d.%d.%d",
-                (uint8_t)((ip_number >> 24) & 0xFF),
-                (uint8_t)((ip_number >> 16) & 0xFF),
-                (uint8_t)((ip_number >> 8) & 0xFF),
-                (uint8_t)((ip_number >> 0) & 0xFF));
-}
-
-static void dhcpd_set_ip_pool(const ip4_addr_t *ap_ip_addr,
-                              const ip4_addr_t *ap_net_mask,
-                              char ip_pool_start[IP4ADDR_STRLEN_MAX],
-                              char ip_pool_end[IP4ADDR_STRLEN_MAX])
-{
-    uint32_t ap_ip_number = ip_number_to_big_endian(ip4_addr_get_u32(ap_ip_addr));
-    uint32_t ap_mask_number = ip_number_to_big_endian(ip4_addr_get_u32(ap_net_mask));
-    uint32_t ip_range_min = ap_ip_number & ap_mask_number;
-    uint32_t ip_range_max = ip_range_min | (~ap_mask_number);
-
-    if ((ip_range_max - ap_ip_number) > (ap_ip_number - ip_range_min)) {
-        ip_number_to_string(ap_ip_number + 1, ip_pool_start);
-        ip_number_to_string(ip_range_max - 1, ip_pool_end);
-    } else {
-        ip_number_to_string(ip_range_min + 1, ip_pool_start);
-        ip_number_to_string(ap_ip_number - 1, ip_pool_end);
-    }
-}
-
-void dhcpd_settings_init(const lwip_tcpip_config_t *tcpip_config,
-                                dhcpd_settings_t *dhcpd_settings)
-{
-    STRCPY(dhcpd_settings->dhcpd_server_address,
-               ip4addr_ntoa(&tcpip_config->ap_addr),
-               IP4ADDR_STRLEN_MAX);
-
-    STRCPY(dhcpd_settings->dhcpd_netmask,
-               ip4addr_ntoa(&tcpip_config->ap_mask),
-               IP4ADDR_STRLEN_MAX);
-
-    STRCPY(dhcpd_settings->dhcpd_gateway,
-               (char *)dhcpd_settings->dhcpd_server_address,
-               IP4ADDR_STRLEN_MAX);
-
-    STRCPY(dhcpd_settings->dhcpd_primary_dns,
-               (char *)dhcpd_settings->dhcpd_server_address,
-               IP4ADDR_STRLEN_MAX);
-
-    /* secondary DNS is not defined by default */
-    STRCPY(dhcpd_settings->dhcpd_secondary_dns,
-               "0.0.0.0",
-               IP4ADDR_STRLEN_MAX);
-
-    dhcpd_set_ip_pool(&tcpip_config->ap_addr,
-                      &tcpip_config->ap_mask,
-                      dhcpd_settings->dhcpd_ip_pool_start,
-                      dhcpd_settings->dhcpd_ip_pool_end);
-}
-
-int32_t wifi_init_done_handler(wifi_event_t event,
-                                      uint8_t *payload,
-                                      uint32_t length)
-{
-    LOG_I(common, "WiFi Init Done: port = %d", payload[6]);
-    return 1;
-}
-
-#if 0 /* WIFI_EVENT_IOT_CONNECTION_FAILED event is not ready yet, turn it off by default.*/
-static int32_t wifi_station_connect_fail_event_handler(wifi_event_t event,
-                                                       uint8_t *payload,
-                                                       uint32_t length)
-{
-    uint8_t *port = payload;
-    uint8_t *reason_code = payload + 1;
-    LOG_E(wifi,"reason code[port %d]: %d", *port,reason_code[0] + reason_code[1]*256);
-    return 0;
-}
-#endif
-
 
 #ifdef MTK_WIFI_CONFIGURE_FREE_ENABLE
 extern int32_t mtk_smart_connect(void);

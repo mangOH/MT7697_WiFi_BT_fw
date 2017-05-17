@@ -44,8 +44,8 @@ typedef void (*mcs_mqtt_callback_t)(char *);
 
 //void mcs_upload_datapoint(char *);
 void mcs_update(int status_id, int onoff, char* displaystr);
-int32_t mcs_tcp_init(void (*mcs_tcp_callback)(char *));
-void mcs_mqtt_init(void (*mcs_mqtt_callback)(char *));
+//int32_t mcs_tcp_init(void (*mcs_tcp_callback)(char *));
+//void mcs_mqtt_init(void (*mcs_mqtt_callback)(char *));
 void mcs_init(void);
 void mcs_set_gpio33_led(int on_off);
 int mcs_get_gpio33_led(void);

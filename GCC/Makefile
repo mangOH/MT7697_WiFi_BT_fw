@@ -169,6 +169,7 @@ APP_FILES       = $(APP_PATH_SRC)/main.c     \
                   $(APP_PATH_SRC)/ut_app/gatt_service.c \
                   $(APP_PATH_SRC)/ut_app/gatt_command.c \
                   $(APP_PATH_SRC)/spi_slave_queues.c \
+                  $(APP_PATH_SRC)/spi_slave_wifi.c \
                   $(APP_PATH)/GCC/syscalls.c \
                   driver/board/mt76x7_hdk/util/src/io_def.c
 
