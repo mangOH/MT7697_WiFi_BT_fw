@@ -21,7 +21,7 @@ static ssize_t _circular_buffer_difference(uint32_t buffer_size, uint32_t from, 
 static size_t _get_queue_capacity_in_words(const struct QueueSpecification* queue_specification);
 static size_t _get_num_words_in_queue(const struct QueueSpecification* queue_specification);
 static size_t _get_num_free_words_in_queue(const struct QueueSpecification* queue_specification);
-static void _set_slave_to_master_mailbox(uint8_t bits);
+static int32_t _set_slave_to_master_mailbox(uint8_t bits);
 static void _clear_master_to_slave_mailbox(uint8_t bits);
 static void _notify_spi_master(void);
 static struct QueueSpecification* _get_valid_queue(uint8_t channel);
@@ -32,6 +32,7 @@ static void spi_queue_task(void*);
 
 // Stores the task handles associated with each channel.
 static TaskHandle_t tasks[NUM_CHANNELS];
+static SemaphoreHandle_t locks[NUM_CHANNELS];
 static char taskName[NUM_CHANNELS][4];
 
 static uint32_t test_queue_m2s[QUEUE_WORD_SIZE];
@@ -64,8 +65,14 @@ int32_t spi_queue_init(void)
     // EPT is used for pin muxing, so no need to configure muxing for SPI slave
     LOG_I(common, "queues init");
 
-    for (unsigned int i = 0; i < NUM_CHANNELS; i++)
-    {
+    hal_gpio_status_t status = hal_gpio_set_output(HAL_GPIO_59, HAL_GPIO_DATA_LOW);
+    if (status != HAL_GPIO_STATUS_OK) {
+	LOG_W(common, "hal_gpio_set_output() failed(%d)", status);
+	ret = -1;
+	goto cleanup;
+    }
+
+    for (unsigned int i = 0; i < NUM_CHANNELS; i++) {
 	struct QueueSpecification* qs = _get_valid_queue(i);
 	configASSERT(qs);	
 
@@ -83,8 +90,13 @@ int32_t spi_queue_init(void)
 		ret = -1;
 		goto cleanup;
             }
+
+	    locks[i] = xSemaphoreCreateMutex();
         }
     }
+
+    *SPIS_REG_MAILBOX_M2S = 0;
+    *SPIS_REG_MAILBOX_S2M = 0;
 
     hal_spi_slave_status_t slave_status;
     hal_spi_slave_config_t spi_configure = {
@@ -109,41 +121,34 @@ size_t spi_queue_read(uint8_t channel, uint32_t* buffer, size_t num_words)
     const uint32_t buffer_num_words = BF_GET(qs->flags, FLAGS_NUM_WORDS_OFFSET, FLAGS_NUM_WORDS_WIDTH);
 
     // take a copy of write_offset so it isn't changed as this code executes
-    LOG_I(common, "q(%d) rd/wr offset(%d/%d)", channel, qs->read_offset, qs->write_offset);
     const uint32_t write_offset = qs->write_offset;
     size_t words_read = 0;
-    if (qs->read_offset > write_offset)
-    {
+    if (qs->read_offset > write_offset) {
         const size_t words_until_end =  buffer_num_words - qs->read_offset;
         const uint32_t* read_from = (uint32_t*)(qs->base_address + (qs->read_offset * sizeof(uint32_t)));
         const size_t num_words_to_read = (num_words <= words_until_end) ? num_words : words_until_end;
 
-	LOG_I(common, "q(%d) rd(0x%08x/%d/%d)", channel, read_from, num_words_to_read, words_read);
         memcpy(&buffer[words_read], read_from, num_words_to_read * sizeof(uint32_t));
         words_read += num_words_to_read;
 	qs->read_offset += num_words_to_read;
-        if (qs->read_offset == buffer_num_words)
-        {
+        if (qs->read_offset == buffer_num_words) {
             // If we have read to the end, then set the read pointer to the beginning
             qs->read_offset = 0;
         }
     }
 
-    if (words_read < num_words)
-    {
+    if (words_read < num_words) {
         const size_t words_until_write_ptr = write_offset - qs->read_offset;
         const uint32_t* read_from = (uint32_t*)(qs->base_address + (qs->read_offset * sizeof(uint32_t)));
         const size_t wanted_words = num_words - words_read;
         const size_t num_words_to_read =
             (wanted_words <= words_until_write_ptr) ? wanted_words : words_until_write_ptr;
 
-	LOG_I(common, "q(%d) rd(0x%08x/%d/%d)", channel, read_from, num_words_to_read, words_read);
         memcpy(&buffer[words_read], read_from, num_words_to_read * sizeof(uint32_t));
         words_read += num_words_to_read;
         qs->read_offset += num_words_to_read;
     }
 
-    LOG_I(common, "q(%d) rd words(%d) offset(%d)", channel, words_read, qs->read_offset);
     return words_read;
 }
 
@@ -158,11 +163,9 @@ size_t spi_queue_write(uint8_t channel, const uint32_t* buffer, size_t num_words
     if (spi_queue_get_num_free_words(channel) < num_words) goto cleanup;
 
     // take a copy of write_offset so it isn't changed as this code executes
-    LOG_I(common, "q(%d) rd/wr offset(%d/%d)", channel, qs->read_offset, qs->write_offset);
     const uint32_t read_offset = qs->read_offset;
 
-    if (qs->write_offset >= read_offset)
-    {
+    if (qs->write_offset >= read_offset) {
         const size_t words_until_end = buffer_num_words - qs->write_offset;
         const size_t words_available_for_write =
             (read_offset == 0) ? (words_until_end - 1) : words_until_end;
@@ -170,38 +173,38 @@ size_t spi_queue_write(uint8_t channel, const uint32_t* buffer, size_t num_words
             (num_words <= words_available_for_write) ? num_words : words_available_for_write;
         uint32_t* const write_to = (uint32_t*)(qs->base_address + (qs->write_offset * sizeof(uint32_t)));
 
-	LOG_I(common, "q(%d) wr(0x%08x/%d/%d)", channel, write_to, num_words_to_write, words_written);
         memcpy(write_to, &buffer[words_written], num_words_to_write * sizeof(uint32_t));
         words_written += num_words_to_write;
         qs->write_offset += num_words_to_write;
 	num_words -= num_words_to_write;
-        if (qs->write_offset == buffer_num_words)
-        {
+        if (qs->write_offset == buffer_num_words) {
             qs->write_offset = 0;
         }
     }
 
-    if ((qs->write_offset < read_offset) && (num_words > 0))
-    {
+    if ((qs->write_offset < read_offset) && (num_words > 0)) {
         const size_t words_until_read = (read_offset - qs->write_offset) - 1;
         const size_t num_words_to_write = (num_words <= words_until_read) ? num_words : words_until_read;
         uint32_t* const write_to = (uint32_t*)(qs->base_address + (qs->write_offset * sizeof(uint32_t)));
 
-	LOG_I(common, "q(%d) wr(0x%08x/%d/%d)", channel, write_to, num_words_to_write, words_written);
         memcpy(write_to, &buffer[words_written], num_words_to_write * sizeof(uint32_t));
         words_written += num_words_to_write;
 	num_words -= num_words_to_write;
         qs->write_offset += num_words_to_write;
     }
 
-    if (words_written > 0)
-    {
-        _set_slave_to_master_mailbox(1 << channel);
+    if (words_written > 0) {
+        int32_t err = _set_slave_to_master_mailbox(1 << channel);
+	if (err) {
+	    LOG_E(common, "_set_slave_to_master_mailbox() failed(%d)", err);
+	    words_written = -1;
+	    goto cleanup;
+  	}
+
         _notify_spi_master();
     }
 
 cleanup:
-    LOG_I(common, "q(%d) wr words(%d) offset(%d)", channel, words_written, qs->write_offset);
     return words_written;
 }
 
@@ -226,22 +229,22 @@ size_t spi_queue_get_num_free_words(uint8_t channel)
     return _get_num_free_words_in_queue(qs);
 }
 
-static ssize_t _circular_buffer_difference
-(
-    uint32_t buffer_size,
-    uint32_t from,
-    uint32_t to
-)
+static ssize_t _circular_buffer_difference(uint32_t buffer_size, uint32_t from, uint32_t to)
 {
-    configASSERT(from < buffer_size);
-    configASSERT(to < buffer_size);
+    if (from >= buffer_size) {
+	LOG_E(common, "invalid from(%u) >= size(%u)", from, buffer_size);
+        configASSERT(from < buffer_size);
+    }
 
-    if (from <= to)
-    {
+    if (to >= buffer_size) {
+        LOG_E(common, "invalid to(%u) >= size(%u)", to, buffer_size);
+        configASSERT(to < buffer_size);
+    }
+
+    if (from <= to) {
         return (to - from);
     }
-    else
-    {
+    else {
         return ((buffer_size - from) + to);
     }
 }
@@ -252,10 +255,7 @@ static size_t _get_queue_capacity_in_words(
     return BF_GET(queue_specification->flags, FLAGS_NUM_WORDS_OFFSET, FLAGS_NUM_WORDS_WIDTH) - 1;
 }
 
-static size_t _get_num_words_in_queue
-(
-    const struct QueueSpecification* queue_specification
-)
+static size_t _get_num_words_in_queue(const struct QueueSpecification* queue_specification)
 {
     return _circular_buffer_difference(
         BF_GET(queue_specification->flags, FLAGS_NUM_WORDS_OFFSET, FLAGS_NUM_WORDS_WIDTH),
@@ -263,19 +263,22 @@ static size_t _get_num_words_in_queue
         queue_specification->write_offset);
 }
 
-static size_t _get_num_free_words_in_queue
-(
-    const struct QueueSpecification* queue_specification
-)
+static size_t _get_num_free_words_in_queue(const struct QueueSpecification* queue_specification)
 {
     return _get_queue_capacity_in_words(queue_specification) - _get_num_words_in_queue(queue_specification);
 }
 
-static void _set_slave_to_master_mailbox(uint8_t bits)
+static int32_t _set_slave_to_master_mailbox(uint8_t bits)
 {
     *SPIS_REG_MAILBOX_S2M =
         BF_DEFINE(bits, S2M_MAILBOX_REG_MAILBOX_OFFSET, S2M_MAILBOX_REG_MAILBOX_WIDTH);
-    LOG_I(common, "S2M mbx(0x%02x)", *SPIS_REG_MAILBOX_S2M);
+
+    hal_gpio_status_t status = hal_gpio_set_output(HAL_GPIO_59, HAL_GPIO_DATA_HIGH);
+    if (status != HAL_GPIO_STATUS_OK) {
+	LOG_W(common, "hal_gpio_set_output() failed(%d)", status);
+    }
+
+    return status;
 }
 
 static void _clear_master_to_slave_mailbox(uint8_t bits)
@@ -291,22 +294,14 @@ static void _notify_spi_master(void)
     configASSERT(r == HAL_GPIO_STATUS_OK);
 }
 
-
-static struct QueueSpecification* _get_valid_queue
-(
-    uint8_t channel
-)
+static struct QueueSpecification* _get_valid_queue(uint8_t channel)
 {
     configASSERT(channel < NUM_CHANNELS);
     struct QueueSpecification* qs = &queues[channel];
     return qs;
 }
 
-static struct QueueSpecification* _get_valid_directed_queue
-(
-    uint8_t channel,
-    enum QueueDirection direction
-)
+static struct QueueSpecification* _get_valid_directed_queue(uint8_t channel, enum QueueDirection direction)
 {
     struct QueueSpecification* qs = _get_valid_queue(channel);
     enum QueueDirection actual_direction =
@@ -316,39 +311,97 @@ static struct QueueSpecification* _get_valid_directed_queue
     return qs;
 }
 
-static int32_t proc_queue_cmd(uint8_t channel, uint16_t len, uint8_t type)
+static void proc_queue_init_cmd(uint8_t channel)
+{
+    struct QueueSpecification* qs;
+
+    LOG_I(common, "init queue(%u)", channel);
+    qs = _get_valid_queue(channel + 1);
+    configASSERT(qs);
+    qs->flags |= BF_DEFINE(1, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH);
+}
+
+static int32_t proc_queue_clr_intr_cmd(uint8_t channel)
 {
     struct QueueSpecification* qs;
     int32_t ret = 0;
 
-    switch (type) {
-    case MT7697_CMD_INIT:
-	LOG_I(common, "init queue(%u)", channel);
-	qs = _get_valid_queue(channel + 1);
-	configASSERT(qs);
-	qs->flags |= BF_DEFINE(1, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH);
-	break;
+    LOG_I(common, "clear interrupt queue(%u) 22m mbx(0x%08x)", channel, *SPIS_REG_MAILBOX_S2M);
+    qs = _get_valid_queue(channel + 1);
+    configASSERT(qs);
 
-    case MT7697_CMD_UNUSED:
-  	LOG_I(common, "init queue(%u)", channel);
-	qs = _get_valid_queue(channel + 1);
-	configASSERT(qs);
-	qs->flags &= ~BF_DEFINE(1, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH);
-	break;
-
-    case MT7697_CMD_RESET:
-	LOG_I(common, "reset queue(%u)", channel);
-	qs = _get_valid_queue(channel);
-	configASSERT(qs);
-	qs->read_offset = 0;
-        qs->write_offset = 0;
-	qs = _get_valid_queue(channel + 1);
-	configASSERT(qs);
-	qs->read_offset = 0;
-        qs->write_offset = 0;
-	break;
+    hal_gpio_status_t status = hal_gpio_set_output(HAL_GPIO_59, HAL_GPIO_DATA_LOW);
+    if (status != HAL_GPIO_STATUS_OK) {
+	LOG_W(common, "hal_gpio_set_output() failed(%d)", status);
+	ret = -1;
+	goto cleanup;
     }
 
+cleanup:
+    return ret;
+}
+
+static void proc_queue_unused_cmd(uint8_t channel)
+{
+    struct QueueSpecification* qs;
+
+    LOG_I(common, "init queue(%u)", channel);
+    qs = _get_valid_queue(channel + 1);
+    configASSERT(qs);
+    qs->flags &= ~BF_DEFINE(1, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH);
+}
+
+static void proc_queue_reset_cmd(uint8_t channel)
+{
+    struct QueueSpecification* qs;
+
+    LOG_I(common, "reset queue(%u)", channel);
+    qs = _get_valid_queue(channel);
+    configASSERT(qs);
+
+    qs->read_offset = 0;
+    qs->write_offset = 0;
+	
+    qs = _get_valid_queue(channel + 1);
+    configASSERT(qs);
+
+    qs->read_offset = 0;
+    qs->write_offset = 0;
+}
+
+static int32_t proc_queue_cmd(uint8_t channel, uint16_t len, uint8_t type)
+{   
+    int32_t ret = 0;
+
+    switch (type) {
+    case MT7697_CMD_QUEUE_INIT:
+	proc_queue_init_cmd(channel);
+	break;
+
+    case MT7697_CMD_QUEUE_CLR_INTR:
+	ret = proc_queue_clr_intr_cmd(channel);
+	if (ret < 0) {
+	    LOG_W(common, "proc_queue_clr_intr_cmd() failed(%d)", ret);
+	    goto cleanup;
+        }
+
+	break;
+
+    case MT7697_CMD_QUEUE_UNUSED:
+  	proc_queue_unused_cmd(channel);
+	break;
+
+    case MT7697_CMD_QUEUE_RESET:
+	proc_queue_reset_cmd(channel);
+	break;
+
+    default:
+	LOG_W(common, "unhandled cmd(%d)", type);
+	ret = -1;
+	goto cleanup;
+    }
+
+cleanup:
     return ret;
 }
 
@@ -356,37 +409,32 @@ static void spi_queue_task(void *pvParameters)
 {
     uint32_t channel = (uint32_t)pvParameters;
 
-    LOG_I(common, "start task(%u)", channel);
-
     struct QueueSpecification* qs = _get_valid_directed_queue(channel, QUEUE_DIRECTION_MASTER_TO_SLAVE);
-    if (qs) {
-	while (1) {
-	    struct mt7697_cmd_hdr cmd_hdr;
-	    int32_t ret;
+    configASSERT(qs);
 
-	    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    while (1) {
+	struct mt7697_cmd_hdr cmd_hdr;
+	int32_t ret;
 
-	    LOG_I(common, "run task(%u)", channel);
+	ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
+	if (xSemaphoreTake(locks[channel], portMAX_DELAY) == pdTRUE) {
 	    size_t avail = _get_num_words_in_queue(qs);
-	    LOG_I(common, "avail(%u)", avail);
 	    while (avail >= QUEUE_LEN_TO_WORD(sizeof(struct mt7697_cmd_hdr))) {
 	        size_t words_read = spi_queue_read(channel, (uint32_t*)&cmd_hdr, QUEUE_LEN_TO_WORD(sizeof(struct mt7697_cmd_hdr)));
 	        if (words_read == QUEUE_LEN_TO_WORD(sizeof(struct mt7697_cmd_hdr))) {
-	            LOG_I(common, "cmd len(%d) grp(%d) type(%d)", cmd_hdr.len, cmd_hdr.grp, cmd_hdr.type);
-
 	            switch (cmd_hdr.grp) {
 		    case MT7697_CMD_GRP_QUEUE:
-			ret = proc_queue_cmd(channel, cmd_hdr.len, cmd_hdr.type);
+		        ret = proc_queue_cmd(channel, cmd_hdr.len, cmd_hdr.type);
 		        if (ret < 0) {
 			    LOG_W(common, "proc_queue_cmd() failed(%d)", ret);
 		        }
-			break;
+		        break;
 
 	            case MT7697_CMD_GRP_80211:
 		        ret = wifi_proc_cmd(channel, cmd_hdr.len, cmd_hdr.type);
 		        if (ret < 0) {
-			    LOG_W(common, "wifi_proc_cmd() failed(%d)", ret);
+	   		    LOG_W(common, "wifi_proc_cmd() failed(%d)", ret);
 		        }
 		        break;
 
@@ -400,16 +448,18 @@ static void spi_queue_task(void *pvParameters)
 	        }
 	        else {
 	            LOG_W(common, "spi_queue_read() failed(%d)", words_read);
-		    goto cleanup;
 	        }
 
-		avail = _get_num_words_in_queue(qs);
-		LOG_I(common, "avail(%u)", avail);
-            }
+	        avail = _get_num_words_in_queue(qs);
+	    }
+
+	    xSemaphoreGive(locks[channel]);
         }
+	else {
+	    LOG_W(common, "xSemaphoreTake() failed");
+	}
     }
 
-cleanup:
     LOG_W(common, "end task(%u)", channel);
 }
 
@@ -423,13 +473,8 @@ static void _spi_slave_interrupt_handler(void* data)
     _clear_master_to_slave_mailbox(m2s_mailbox_bits);
 
     // Notify the task associated with the channel
-    LOG_I(common, "spi slave isr(0x%02x)", m2s_mailbox_bits);
-
-    for (uint16_t i = 0; i < NUM_CHANNELS; i++)
-    {
-        if ((m2s_mailbox_bits & (1 << i)) && tasks[i] != NULL)
-        {
-	    LOG_I(common, "notify(%u)", i);
+    for (uint16_t i = 0; i < NUM_CHANNELS; i++) {
+        if ((m2s_mailbox_bits & (1 << i)) && tasks[i] != NULL) {
 	    BaseType_t xHigherPriorityTaskWoken;
 	    vTaskNotifyGiveFromISR(tasks[i], &xHigherPriorityTaskWoken);
 	    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);

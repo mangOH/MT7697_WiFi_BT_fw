@@ -175,21 +175,9 @@ int main(void)
 	goto cleanup;
     }
 
-    ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_CONNECTED, wifi_station_connected_event_handler);
+    ret = wifi_init_evt_hndlrs();
     if (ret < 0) {
-	LOG_E(common, "wifi_connection_register_event_handler() failed(%d)", ret);
-	goto cleanup;
-    }
-
-    ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_PORT_SECURE, wifi_station_port_secure_event_handler);
-    if (ret < 0) {
-	LOG_E(common, "wifi_connection_register_event_handler() failed(%d)", ret);
-	goto cleanup;
-    }
-
-    ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_DISCONNECTED, wifi_station_disconnected_event_handler);
-    if (ret < 0) {
-	LOG_E(common, "wifi_connection_register_event_handler() failed(%d)", ret);
+	LOG_E(common, "wifi_init_evt_hndlrs() failed(%d)", ret);
 	goto cleanup;
     }
 
