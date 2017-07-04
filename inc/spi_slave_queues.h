@@ -2,6 +2,7 @@
 #define SPI_SLAVE_QUEUES_H
 
 #include <stdint.h>
+#include <semphr.h>
 
 #define ARRAY_SIZE(_a_) (sizeof(_a_) / sizeof(_a_[0]))
 
@@ -70,7 +71,7 @@
 #define FLAGS_NUM_WORDS_WIDTH  		16
 
 #define QUEUE_TASK_STACK_SIZE		4096
-#define QUEUE_WORD_SIZE			1024
+#define QUEUE_WORD_SIZE			2048
 #define QUEUE_LEN_TO_WORD(x)		((x) / sizeof(uint32_t) + ((x) % sizeof(uint32_t) ? 1:0))
 #define QUEUE_LEN32_ALIGNED(x)		(((x) / sizeof(uint32_t) + \
 					 ((x) % sizeof(uint32_t) ? 1:0)) * sizeof(uint32_t))
@@ -82,22 +83,23 @@ enum QueueDirection {
 };
 
 struct QueueSpecification {
-    uint32_t 	flags;
-    uint32_t 	base_address;
-    uint32_t 	read_offset;
-    uint32_t 	write_offset;
+    uint32_t 		flags;
+    uint32_t 		base_address;
+    uint32_t 		read_offset;
+    uint32_t 		write_offset;
 };
 
-enum mt7697_cmd_grp {
+enum mt7697q_cmd_grp {
 	MT7697_CMD_GRP_QUEUE = 0,
 	MT7697_CMD_GRP_80211,
 	MT7697_CMD_GRP_BT,
 };
 
-enum mt7697_queue_cmd_types {
-	MT7697_CMD_INIT = 0,
-	MT7697_CMD_UNUSED,
-	MT7697_CMD_RESET,
+enum mt7697q_cmd_types {
+	MT7697_CMD_QUEUE_INIT = 0,
+	MT7697_CMD_QUEUE_CLR_INTR,
+	MT7697_CMD_QUEUE_UNUSED,
+	MT7697_CMD_QUEUE_RESET,
 };
 
 int32_t spi_queue_init(void);
