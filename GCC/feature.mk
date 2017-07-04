@@ -1,5 +1,5 @@
 IC_CONFIG                           = mt7697
-BOARD_CONFIG                        = mt7697_hdk
+BOARD_CONFIG                        = linkit7697_hdk
 MTK_FW_VERSION                      = mt7697_fw_
 MTK_HAL_LOWPOWER_ENABLE             = y
 MTK_BSPEXT_ENABLE                   = y

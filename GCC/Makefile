@@ -70,20 +70,20 @@ FEATURE    ?= feature.mk
 include $(FEATURE)
 
 # Gloabl Config
--include $(SOURCE_DIR)/.config
+include $(SOURCE_DIR)/.config
 # IC Config
--include $(SOURCE_DIR)/config/chip/$(IC_CONFIG)/chip.mk
+include $(SOURCE_DIR)/config/chip/$(IC_CONFIG)/chip.mk
 # Board Config
--include $(SOURCE_DIR)/config/board/$(BOARD_CONFIG)/board.mk
+include $(SOURCE_DIR)/config/board/$(BOARD_CONFIG)/board.mk
 # HAL driver files
 include $(SOURCE_DIR)/driver/chip/mt7687/module.mk
 # EPT Config
--include $(SOURCE_DIR)/driver/board/mt76x7_hdk/ept/module.mk
+include $(SOURCE_DIR)/driver/board/mt76x7_hdk/ept/module.mk
 # Minisupp Config
--include $(SOURCE_DIR)/middleware/MTK/minisupp/module.mk
+include $(SOURCE_DIR)/prebuilt/middleware/MTK/minisupp/module.mk
 
 ifeq ($(MTK_SMTCN_ENABLE),y)
--include $(SOURCE_DIR)/middleware/MTK/smtcn/module.mk
+include $(SOURCE_DIR)/middleware/MTK/smtcn/module.mk
 endif
 
 ifeq ($(MTK_CLI_EXAMPLE_MODE_ENABLE),y)
@@ -149,13 +149,19 @@ include $(SOURCE_DIR)/middleware/third_party/httpclient/module.mk
 include $(SOURCE_DIR)/middleware/third_party/mbedtls/module.mk
 
 #include dhcpd
-include $(SOURCE_DIR)/middleware/third_party/dhcpd/module.mk
+include $(SOURCE_DIR)/middleware/MTK/dhcpd/module.mk
 
 #include tftp
 include $(SOURCE_DIR)/middleware/MTK/tftp/module.mk
 
 # wifi src
-include $(SOURCE_DIR)/driver/board/mt76x7_hdk/wifi/module.mk
+include $(SOURCE_DIR)/middleware/MTK/wifi_service/combo/module.mk
+
+# connsys
+include $(SOURCE_DIR)/middleware/MTK/connsys/module.mk
+
+# util
+include $(SOURCE_DIR)/driver/board/linkit7697_hdk/util/module.mk
 
 APP_FILES       = $(APP_PATH_SRC)/main.c     \
                   $(APP_PATH_SRC)/sys_init.c \
