@@ -3,6 +3,9 @@
 
 // WIFI
 #include <wifi_api.h>
+#include "spi_slave_queues.h"
+
+#define MT7697_S2M_QUEUE			1
 
 #define MT7697_MAX_SCAN_RESULTS			32
 #define MT7697_IEEE80211_FRAME_LEN		2352
@@ -27,6 +30,7 @@
 #define mt7697_scan_stop_rsp			mt7697_rsp_hdr
 #define mt7697_register_rx_hndlr_rsp		mt7697_rsp_hdr
 #define mt7697_unregister_rx_hndlr_rsp		mt7697_rsp_hdr
+#define mt7697_disconnect_rsp			mt7697_rsp_hdr
 
 enum mt7697_wifi_cmd_types {
 	MT7697_CMD_MAC_ADDR_REQ = 0,
@@ -63,33 +67,25 @@ enum mt7697_wifi_cmd_types {
 	MT7697_CMD_REGISTER_RX_HNDLR_RSP,
 	MT7697_CMD_UNREGISTER_RX_HNDLR_REQ,
 	MT7697_CMD_UNREGISTER_RX_HNDLR_RSP,
+	MT7697_CMD_SCAN_IND,
 	MT7697_CMD_SCAN_REQ,
 	MT7697_CMD_SCAN_RSP,
-	MT7697_CMD_SCAN_COMPLETE,
+	MT7697_CMD_SCAN_COMPLETE_IND,
 	MT7697_CMD_SCAN_STOP,
 	MT7697_CMD_SCAN_STOP_RSP,
 	MT7697_CMD_GET_PSK_REQ,
 	MT7697_CMD_GET_PSK_RSP,
 	MT7697_CMD_SET_PSK_REQ,
 	MT7697_CMD_SET_PSK_RSP,
+	MT7697_CMD_CONNECT_IND,
 	MT7697_CMD_CONNECT_REQ,
 	MT7697_CMD_CONNECT_RSP,
+	MT7697_CMD_DISCONNECT_IND,
 	MT7697_CMD_DISCONNECT_REQ,
 	MT7697_CMD_DISCONNECT_RSP,
 	MT7697_CMD_TX_RAW,
 	MT7697_CMD_RX_RAW,
 };
-
-struct mt7697_cmd_hdr {
-	uint16_t			len;
-	uint8_t				grp;
-	uint8_t				type;
-} __attribute__((__packed__, aligned(4)));
-
-struct mt7697_rsp_hdr {
-	struct mt7697_cmd_hdr		cmd;
-	int32_t				result;
-} __attribute__((__packed__, aligned(4)));
 
 struct mt7697_mac_addr_req {
 	struct mt7697_cmd_hdr		cmd;
@@ -98,7 +94,7 @@ struct mt7697_mac_addr_req {
 
 struct mt7697_mac_addr_rsp {
 	struct mt7697_rsp_hdr		rsp;
-	uint8_t 			addr[QUEUE_LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+	uint8_t 			addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_get_wireless_mode_req {
@@ -173,20 +169,24 @@ struct mt7697_scan_req {
 	uint32_t			mode;
 	uint32_t			option;
 	uint32_t			bssid_len;
-	uint8_t				bssid[QUEUE_LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 	uint32_t			ssid_len;
-	uint8_t				ssid[QUEUE_LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
+	uint8_t				ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_scan_rsp {
 	struct mt7697_rsp_hdr		rsp;
+	uint32_t 			if_idx;
+} __attribute__((packed, aligned(4)));
+
+struct mt7697_scan_ind {
+	struct mt7697_rsp_hdr		rsp;
 	int32_t 			rssi;
 	uint32_t 			channel;
-	uint32_t			probe_rsp_len;
 	uint8_t				probe_rsp[];
 } __attribute__((packed, aligned(4)));
 
-struct mt7697_scan_complete_rsp {
+struct mt7697_scan_complete_ind {
 	struct mt7697_rsp_hdr		rsp;
 	uint32_t 			if_idx;
 } __attribute__((packed, aligned(4)));
@@ -199,14 +199,14 @@ struct mt7697_get_psk_req {
 struct mt7697_get_psk_rsp {
 	struct mt7697_rsp_hdr		rsp;
 	uint32_t			len;
-	uint8_t				psk[QUEUE_LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
+	uint8_t				psk[LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_set_psk_req {
 	struct mt7697_cmd_hdr		cmd;
 	uint32_t			port;
 	uint32_t			len;
-	uint8_t				psk[QUEUE_LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
+	uint8_t				psk[LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_set_security_mode_req {
@@ -234,35 +234,41 @@ struct mt7697_connect_req {
 	uint32_t 			if_idx;
 	uint32_t			port;
 	uint32_t			channel;
-	uint8_t				bssid[QUEUE_LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 	uint32_t			ssid_len;
-	uint8_t				ssid[QUEUE_LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
+	uint8_t				ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_connect_rsp {
 	struct mt7697_rsp_hdr		rsp;
 	uint32_t 			if_idx;
+	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+} __attribute__((packed, aligned(4)));
+
+struct mt7697_connect_ind {
+	struct mt7697_rsp_hdr		rsp;
+	uint32_t 			if_idx;
 	uint32_t			channel;
-	uint8_t				bssid[QUEUE_LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_disconnect_req {
 	struct mt7697_cmd_hdr		cmd;
 	uint32_t 			if_idx;
 	uint32_t			port;
-	uint8_t				addr[QUEUE_LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+	uint8_t				addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } __attribute__((packed, aligned(4)));
 
-struct mt7697_disconnect_rsp {
+struct mt7697_disconnect_ind {
 	struct mt7697_rsp_hdr		rsp;
 	uint32_t 			if_idx;
-	uint8_t				bssid[QUEUE_LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_tx_raw_packet {
    	struct mt7697_cmd_hdr		cmd;
 	uint32_t 			len;
-	uint8_t				data[QUEUE_LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
+	uint8_t				data[LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_rx_raw_packet {
@@ -271,8 +277,9 @@ struct mt7697_rx_raw_packet {
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_wifi_info {
-	uint8_t				tx_data[QUEUE_LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
-	uint8_t 			rx_data[QUEUE_LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
+	uint8_t				tx_data[LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
+	uint8_t				mac_addr[WIFI_MAC_ADDRESS_LENGTH];
+	uint8_t				ap_conn_bssid[WIFI_MAC_ADDRESS_LENGTH];
   	uint16_t			if_idx;
 	uint8_t 			channel;
 } __attribute__((aligned(4)));
