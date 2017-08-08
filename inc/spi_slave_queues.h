@@ -76,7 +76,7 @@
 					 ((x) % sizeof(uint32_t) ? 1:0)) * sizeof(uint32_t))
 
 #define QUEUE_TASK_STACK_SIZE		4096
-#define QUEUE_SENDQ_LEN			64
+#define QUEUE_SENDQ_LEN			16
 #define QUEUE_WORD_SIZE			2048
 
 #define mt7697_queue_init_rsp		mt7697_rsp_hdr
@@ -146,8 +146,15 @@ struct QueueTask {
     char 			name[configMAX_TASK_NAME_LEN];
 };
 
+struct QueueMemPool {
+    uint8_t**                   msg_list;
+    uint16_t			alloc_idx;
+    uint16_t			free_idx;
+};
+
 struct QueueInfo {
     struct QueueTask 		task;
+    struct QueueMemPool         msg_pool;
     SemaphoreHandle_t		lock;
     QueueHandle_t               sendQ;
 };
@@ -161,6 +168,7 @@ struct QueueMain {
 };
 
 int32_t spi_queue_init(void);
+uint8_t* spi_queue_pool_alloc_msg(uint8_t);
 int32_t spi_queue_send_req(uint8_t, const struct mt7697_rsp_hdr*);
 int32_t spi_queue_send_req_from_isr(uint8_t, const struct mt7697_rsp_hdr*);
 size_t spi_queue_read(uint8_t, uint32_t*, size_t);

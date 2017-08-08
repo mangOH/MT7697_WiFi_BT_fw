@@ -159,21 +159,53 @@ static struct QueueSpecification* _get_valid_directed_queue(uint8_t channel, enu
     return qs;
 }
 
+static int32_t spi_queue_init_msg_pool(uint8_t ch, uint32_t msg_len)
+{
+    int ret = 0;
+
+    if (queueMain.info[ch].msg_pool.msg_list == NULL) {
+        LOG_I(common, "init msg pool/len(%u/%u)", ch, msg_len);
+
+        queueMain.info[ch].msg_pool.msg_list = malloc(QUEUE_SENDQ_LEN * sizeof(uint8_t*));
+	if (!queueMain.info[ch].msg_pool.msg_list) {
+            LOG_W(common, "malloc() failed");
+            ret = -1;
+	    goto cleanup;
+        }
+
+        uint8_t* buf = malloc(QUEUE_SENDQ_LEN * msg_len);
+        if (!buf) {
+            LOG_W(common, "malloc() failed");
+            ret = -1;
+	    goto cleanup;
+        }
+
+	uint8_t* ptr = buf;
+        for (unsigned int i = 0; i < QUEUE_SENDQ_LEN; i++) {
+	    queueMain.info[ch].msg_pool.msg_list[i] = ptr;
+	    ptr += msg_len;
+        }
+    }
+
+    queueMain.info[ch].msg_pool.alloc_idx = 0;
+    queueMain.info[ch].msg_pool.free_idx = (uint16_t)-1;
+
+cleanup:
+    return ret;
+}
+
+static void spi_queue_pool_free_msg(uint8_t ch)
+{
+    configASSERT(queueMain.info[ch].msg_pool.msg_list[0] != NULL);
+    configASSERT(queueMain.info[ch].msg_pool.free_idx != (uint16_t)-1);
+    LOG_I(common, "free(%u)", queueMain.info[ch].msg_pool.free_idx);
+    queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx + 1) % QUEUE_SENDQ_LEN;
+}
+
 static int32_t proc_queue_init_cmd(uint8_t channel)
 {
     uint32_t m2s_ch, s2m_ch;
     int32_t ret = 0;
-
-    struct mt7697_queue_init_rsp* rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_queue_init_rsp)));
-    if (!rsp) {
-	LOG_W(common, "malloc() failed");
-        ret = -1;
-	goto cleanup;
-    }
-
-    rsp->cmd.len = sizeof(struct mt7697_queue_init_rsp);
-    rsp->cmd.grp = MT7697_CMD_GRP_QUEUE;
-    rsp->cmd.type = MT7697_CMD_QUEUE_INIT_RSP; 
 
     LOG_I(common, "--> INIT QUEUE");
     size_t words_read = spi_queue_read(channel, (uint32_t*)&m2s_ch, LEN_TO_WORD(sizeof(uint32_t)));
@@ -189,6 +221,23 @@ static int32_t proc_queue_init_cmd(uint8_t channel)
 	ret = -1;
 	goto cleanup;
     }
+
+    ret = spi_queue_init_msg_pool(s2m_ch, MT7697_IEEE80211_FRAME_LEN);
+    if (ret < 0) {
+        LOG_W(common, "spi_queue_init_msg_pool() failed(%d)", ret);
+	goto cleanup;
+    }
+
+    struct mt7697_queue_init_rsp* rsp = (struct mt7697_queue_init_rsp*)spi_queue_pool_alloc_msg(s2m_ch);
+    if (!rsp) {
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
+        ret = -1;
+	goto cleanup;
+    }
+
+    rsp->cmd.len = sizeof(struct mt7697_queue_init_rsp);
+    rsp->cmd.grp = MT7697_CMD_GRP_QUEUE;
+    rsp->cmd.type = MT7697_CMD_QUEUE_INIT_RSP; 
 
     LOG_I(common, "init queue(%u/%u)", m2s_ch, s2m_ch);
     struct QueueSpecification* qsM2S = _get_queue(m2s_ch);
@@ -213,17 +262,6 @@ static int32_t proc_queue_unused_cmd(uint8_t channel)
     uint32_t m2s_ch, s2m_ch;
     int32_t ret = 0;
 
-    struct mt7697_queue_unused_rsp* rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_queue_init_rsp)));
-    if (!rsp) {
-	LOG_W(common, "malloc() failed");
-        ret = -1;
-	goto cleanup;
-    }
-
-    rsp->cmd.len = sizeof(struct mt7697_queue_unused_rsp);
-    rsp->cmd.grp = MT7697_CMD_GRP_QUEUE;
-    rsp->cmd.type = MT7697_CMD_QUEUE_UNUSED_RSP;
-
     LOG_I(common, "--> UNUSED QUEUE(%u)", channel);
     size_t words_read = spi_queue_read(channel, (uint32_t*)&m2s_ch, LEN_TO_WORD(sizeof(uint32_t)));
     if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
@@ -238,6 +276,17 @@ static int32_t proc_queue_unused_cmd(uint8_t channel)
 	ret = -1;
 	goto cleanup;
     }
+
+    struct mt7697_queue_unused_rsp* rsp = (struct mt7697_queue_unused_rsp*)spi_queue_pool_alloc_msg(s2m_ch);
+    if (!rsp) {
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
+        ret = -1;
+	goto cleanup;
+    }
+
+    rsp->cmd.len = sizeof(struct mt7697_queue_unused_rsp);
+    rsp->cmd.grp = MT7697_CMD_GRP_QUEUE;
+    rsp->cmd.type = MT7697_CMD_QUEUE_UNUSED_RSP;
 
     LOG_I(common, "unused queue(%u/%u)", m2s_ch, s2m_ch);
     struct QueueSpecification* qsM2S = _get_valid_queue(m2s_ch);
@@ -262,17 +311,6 @@ static int32_t proc_queue_reset_cmd(uint8_t channel)
     uint32_t m2s_ch, s2m_ch;
     int32_t ret = 0;
 
-    struct mt7697_queue_reset_rsp* rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_queue_reset_rsp)));
-    if (!rsp) {
-	LOG_W(common, "malloc() failed");
-        ret = -1;
-	goto cleanup;
-    }
-
-    rsp->cmd.len = sizeof(struct mt7697_queue_reset_rsp);
-    rsp->cmd.grp = MT7697_CMD_GRP_QUEUE;
-    rsp->cmd.type = MT7697_CMD_QUEUE_RESET_RSP;
-
     LOG_I(common, "--> RESET QUEUE(%u)", channel);
     size_t words_read = spi_queue_read(channel, (uint32_t*)&m2s_ch, LEN_TO_WORD(sizeof(uint32_t)));
     if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
@@ -288,6 +326,17 @@ static int32_t proc_queue_reset_cmd(uint8_t channel)
 	goto cleanup;
     }
 
+    struct mt7697_queue_reset_rsp* rsp = (struct mt7697_queue_reset_rsp*)spi_queue_pool_alloc_msg(s2m_ch);
+    if (!rsp) {
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
+        ret = -1;
+	goto cleanup;
+    }
+
+    rsp->cmd.len = sizeof(struct mt7697_queue_reset_rsp);
+    rsp->cmd.grp = MT7697_CMD_GRP_QUEUE;
+    rsp->cmd.type = MT7697_CMD_QUEUE_RESET_RSP;
+
     LOG_I(common, "reset queue(%u/%u)", m2s_ch, s2m_ch);
     struct QueueSpecification* qsM2S = _get_valid_queue(m2s_ch);
     struct QueueSpecification* qsS2M = _get_valid_queue(s2m_ch);
@@ -297,6 +346,12 @@ static int32_t proc_queue_reset_cmd(uint8_t channel)
 
     qsS2M->read_offset = 0;
     qsS2M->write_offset = 0;;
+
+    ret = spi_queue_init_msg_pool(s2m_ch, MT7697_IEEE80211_FRAME_LEN);
+    if (ret < 0) {
+        LOG_W(common, "spi_queue_init_msg_pool() failed(%d)", ret);
+	goto cleanup;
+    }
 
 cleanup:
     rsp->result = ret;
@@ -443,13 +498,13 @@ static void spi_queue_s2m_task(void *pvParameters)
     while (1) {
 	struct mt7697_rsp_hdr* req;
 	if (xQueueReceive(queueMain.info[channel].sendQ, &req, portMAX_DELAY)) {
-            LOG_I(common, "<-- q(%u) CMD(%u) len(%u)", channel, req->cmd.type, req->cmd.len);
+//            LOG_I(common, "<-- q(%u) CMD(%u) len(%u)", channel, req->cmd.type, req->cmd.len);
     	    size_t bWrite = spi_queue_write(channel, (const uint32_t*)req, LEN_TO_WORD(LEN32_ALIGNED(req->cmd.len)));
     	    if (bWrite != LEN_TO_WORD(LEN32_ALIGNED(req->cmd.len))) {
 		LOG_W(common, "spi_queue_write() failed(%d != %d)", bWrite, LEN_TO_WORD(LEN32_ALIGNED(req->cmd.len)));
     	    }
 
-	    free(req);
+	    spi_queue_pool_free_msg(channel);
         }
     }
 
@@ -541,6 +596,24 @@ static void _spi_slave_interrupt_handler(void* data)
     }
 }
 
+uint8_t* spi_queue_pool_alloc_msg(uint8_t ch)
+{
+    uint8_t* ret = NULL;
+
+    configASSERT(queueMain.info[ch].msg_pool.msg_list != NULL);
+    if ((queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_SENDQ_LEN != queueMain.info[ch].msg_pool.free_idx) {
+        LOG_I(common, "alloc(%u)", queueMain.info[ch].msg_pool.alloc_idx);
+        ret = queueMain.info[ch].msg_pool.msg_list[queueMain.info[ch].msg_pool.alloc_idx];
+
+        queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx == (uint16_t)-1) ?
+            queueMain.info[ch].msg_pool.alloc_idx : queueMain.info[ch].msg_pool.free_idx;
+
+        queueMain.info[ch].msg_pool.alloc_idx = (queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_SENDQ_LEN;    
+    }
+
+    return ret;
+}
+
 int32_t spi_queue_init(void)
 {
     int ret = 0;
@@ -563,6 +636,7 @@ int32_t spi_queue_init(void)
 	LOG_I(common, "q(%d) flags(0x%08x) base(0x%08x) rd/wr offset(%d/%d)", 
 		i, qs->flags, qs->base_address, qs->read_offset, qs->write_offset);
 
+	queueMain.info[i].msg_pool.msg_list = NULL;
 	queueMain.info[i].lock = xSemaphoreCreateMutex();
 	if (!queueMain.info[i].lock) {
 	    LOG_W(common, "xSemaphoreCreateMutex(%d) failed", i);

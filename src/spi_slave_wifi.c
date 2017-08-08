@@ -145,9 +145,9 @@ static int32_t wifi_rx_data_evt_hndlr(uint8_t* payload, uint32_t length)
         LOG_I(common, "Payload Length\t\t%u", u2PayloadLength);
         LOG_HEXDUMP_I(common, "Rx data", pucMacHeader, u2PayloadLength + ucMacHeaderLength);
 
-        rx_req = malloc(LEN32_ALIGNED(sizeof(struct mt7697_rx_raw_packet) + u2PayloadLength + ucMacHeaderLength));
+        rx_req = (struct mt7697_rx_raw_packet*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
         if (!rx_req) {
-	    LOG_W(common, "malloc() failed");
+	    LOG_W(common, "spi_queue_pool_alloc_msg() failed");
             err = -1;
 	    goto cleanup;
         }
@@ -216,9 +216,9 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
         printf("%-8d", ap_data.wps_element.selected_registrar);
         printf("\n\n");
 
-	scan_ind = malloc(LEN32_ALIGNED(sizeof(struct mt7697_scan_ind) + length));
+	scan_ind = (struct mt7697_scan_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
         if (!scan_ind) {
-	    LOG_W(common, "malloc() failed");
+	    LOG_W(common, "spi_queue_pool_alloc_msg() failed");
             ret = -1;
 	    goto cleanup;
         }
@@ -245,9 +245,9 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
     {
 	LOG_I(common, "==> SCAN COMPLETE\n");
 
-        struct mt7697_scan_complete_ind* scan_complete_ind = malloc(LEN32_ALIGNED(sizeof(struct mt7697_scan_complete_ind)));
+        struct mt7697_scan_complete_ind* scan_complete_ind = (struct mt7697_scan_complete_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
         if (!scan_complete_ind) {
-	    LOG_W(common, "malloc() failed");
+	    LOG_W(common, "spi_queue_pool_alloc_msg() failed");
             ret = -1;
 	    goto cleanup;
         }
@@ -278,9 +278,9 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
     {
 	LOG_I(common, "==> PORT SECURE\n");
 
-        struct mt7697_connect_ind* connect_ind = malloc(LEN32_ALIGNED(sizeof(struct mt7697_connect_ind)));
+        struct mt7697_connect_ind* connect_ind = (struct mt7697_connect_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
         if (!connect_ind) {
-	    LOG_W(common, "malloc() failed");
+	    LOG_W(common, "spi_queue_pool_alloc_msg() failed");
             ret = -1;
 	    goto cleanup;
         }
@@ -318,37 +318,35 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
         LOG_I(common, "==> DISCONNECTED\n");
 
 	LOG_HEXDUMP_I(common, "MAC", payload, length);
-        if (wifi_info.channel != 0) {
-	    struct mt7697_disconnect_ind* disconnect_ind = malloc(LEN32_ALIGNED(sizeof(struct mt7697_disconnect_ind)));
-            if (!disconnect_ind) {
-	        LOG_W(common, "malloc() failed");
-                ret = -1;
-	        goto cleanup;
-            }
-
-	    disconnect_ind->rsp.cmd.len = sizeof(struct mt7697_disconnect_ind);
-            disconnect_ind->rsp.cmd.grp = MT7697_CMD_GRP_80211;
-            disconnect_ind->rsp.cmd.type = MT7697_CMD_DISCONNECT_IND;
-            disconnect_ind->if_idx = wifi_info.if_idx;
-	
-	    if ((length >= WIFI_MAC_ADDRESS_LENGTH) && payload)   
-	        memcpy(disconnect_ind->bssid, payload, WIFI_MAC_ADDRESS_LENGTH);
-	    else 
-	        memset(disconnect_ind->bssid, 0, WIFI_MAC_ADDRESS_LENGTH);
-
-            disconnect_ind->rsp.result = ret;
-            LOG_I(common, "<-- DISCONNECT IND len(%u) result(%d)", disconnect_ind->rsp.cmd.len, ret);
-            ret = spi_queue_send_req_from_isr(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)disconnect_ind);
-            if (ret < 0) {
-                LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
-		free(disconnect_ind);
-                goto cleanup;
-            }
-
-	    wifi_info.channel = 0;
-	    memset(wifi_info.ap_conn_bssid, 0, WIFI_MAC_ADDRESS_LENGTH);
+        
+	struct mt7697_disconnect_ind* disconnect_ind = (struct mt7697_disconnect_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
+        if (!disconnect_ind) {
+	    LOG_W(common, "spi_queue_pool_alloc_msg() failed");
+            ret = -1;
+	    goto cleanup;
         }
 
+	disconnect_ind->rsp.cmd.len = sizeof(struct mt7697_disconnect_ind);
+        disconnect_ind->rsp.cmd.grp = MT7697_CMD_GRP_80211;
+        disconnect_ind->rsp.cmd.type = MT7697_CMD_DISCONNECT_IND;
+        disconnect_ind->if_idx = wifi_info.if_idx;
+	
+	if ((length >= WIFI_MAC_ADDRESS_LENGTH) && payload)   
+	    memcpy(disconnect_ind->bssid, payload, WIFI_MAC_ADDRESS_LENGTH);
+	else 
+	    memset(disconnect_ind->bssid, 0, WIFI_MAC_ADDRESS_LENGTH);
+
+        disconnect_ind->rsp.result = ret;
+        LOG_I(common, "<-- DISCONNECT IND len(%u) result(%d)", disconnect_ind->rsp.cmd.len, ret);
+        ret = spi_queue_send_req_from_isr(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)disconnect_ind);
+        if (ret < 0) {
+            LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
+            free(disconnect_ind);
+            goto cleanup;
+        }
+
+	wifi_info.channel = 0;
+	memset(wifi_info.ap_conn_bssid, 0, WIFI_MAC_ADDRESS_LENGTH);
 	break;
     }
     case WIFI_EVENT_IOT_CONNECTION_FAILED:
@@ -363,88 +361,27 @@ cleanup:
     return ret;
 }
 
-static int32_t wifi_proc_get_psk_req(uint8_t channel, uint16_t len)
+static int32_t wifi_proc_set_pmk_req(uint8_t channel, uint16_t len)
 {
-    uint32_t port;
-    int32_t ret = 0;
-    uint8_t psk_len = 0;
-
-    struct mt7697_get_psk_rsp* psk_rsp = calloc(1, LEN32_ALIGNED(sizeof(struct mt7697_get_psk_rsp)));
-    if (!psk_rsp) {
-	LOG_W(common, "malloc() failed");
-        ret = -1;
-	goto cleanup;
-    }
-
-    psk_rsp->rsp.cmd.len = sizeof(struct mt7697_get_psk_rsp);
-    psk_rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
-    psk_rsp->rsp.cmd.type = MT7697_CMD_GET_PSK_RSP;
-
-    LOG_I(common, "--> GET PSK(%d)", len);
-    if (len != sizeof(struct mt7697_get_psk_req)) {
-	LOG_W(common, "invalid get PSK req len(%d != %d)", len, sizeof(struct mt7697_get_psk_req));
-	ret = -1;
-	goto cleanup;
-    }
-	
-    size_t words_read = spi_queue_read(channel, (uint32_t*)&port, LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-	ret = -1;
-	goto cleanup;
-    }
-
-    if (!wifi_validate_wifi_port(port)) {
-        LOG_W(common, "invalid port(%d)", port);
-	ret = -1;
-	goto cleanup;
-    }
-
-    LOG_I(common, "PSK port(%d)", port);
-    ret = wifi_config_get_wpa_psk_key(port, psk_rsp->psk, &psk_len);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_get_wpa_psk_key() failed(%d)", ret);
-	goto cleanup;
-    }
-    psk_rsp->len = psk_len;
-    LOG_I(common, "PSK(%u/'%s')", psk_rsp->len, psk_rsp->psk);	
-
-cleanup:
-    if (psk_rsp) {
-        psk_rsp->rsp.result = ret;
-        LOG_I(common, "<-- GET PSK rsp len(%u) result(%d)", psk_rsp->rsp.cmd.len, ret);
-        int32_t err = spi_queue_send_req(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)psk_rsp);
-        if (err < 0) {
-            LOG_W(common, "spi_queue_send_req() failed(%d)", err);
-            ret = ret ? ret:err;
-        }
-    }
-
-    return ret;
-}
-
-static int32_t wifi_proc_set_psk_req(uint8_t channel, uint16_t len)
-{
-    uint8_t psk[WIFI_LENGTH_PASSPHRASE] = {0};
+    uint8_t pmk[WIFI_LENGTH_PMK] = {0};
     size_t words_read;
     uint32_t port;
-    uint32_t psk_len;
     int32_t ret = 0;
 
-    struct mt7697_set_psk_rsp* psk_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_set_psk_rsp)));
-    if (!psk_rsp) {
-	LOG_W(common, "malloc() failed");
+    struct mt7697_set_pmk_rsp* rsp = (struct mt7697_set_pmk_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
+    if (!rsp) {
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
 
-    psk_rsp->cmd.len = sizeof(struct mt7697_set_psk_rsp);
-    psk_rsp->cmd.grp = MT7697_CMD_GRP_80211;
-    psk_rsp->cmd.type = MT7697_CMD_SET_PSK_RSP;
+    rsp->cmd.len = sizeof(struct mt7697_set_pmk_rsp);
+    rsp->cmd.grp = MT7697_CMD_GRP_80211;
+    rsp->cmd.type = MT7697_CMD_SET_PMK_RSP;
 
-    LOG_I(common, "--> SET PSK(%d)", len);
-    if (len != sizeof(struct mt7697_set_psk_req)) {
-	LOG_W(common, "invalid set PSK req len(%d != %d)", len, sizeof(struct mt7697_set_psk_req));
+    LOG_I(common, "--> SET PMK(%d)", len);
+    if (len != sizeof(struct mt7697_set_pmk_req)) {
+	LOG_W(common, "invalid set PMK req len(%d != %d)", len, sizeof(struct mt7697_set_pmk_req));
 	ret = -1;
 	goto cleanup;
     }
@@ -456,46 +393,277 @@ static int32_t wifi_proc_set_psk_req(uint8_t channel, uint16_t len)
 	goto cleanup;
     }
 
-    words_read = spi_queue_read(channel, (uint32_t*)&psk_len, LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
+    words_read = spi_queue_read(channel, (uint32_t*)pmk, LEN_TO_WORD(WIFI_LENGTH_PMK));
+    if (words_read != LEN_TO_WORD(WIFI_LENGTH_PMK)) {
+	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(WIFI_LENGTH_PMK));
 	ret = -1;
 	goto cleanup;
     }
+    LOG_HEXDUMP_I(common, "PMK", pmk, WIFI_LENGTH_PMK);
 
-    words_read = spi_queue_read(channel, (uint32_t*)psk, LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE));
-    if (words_read != LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE)) {
-	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE));
-	ret = -1;
-	goto cleanup;
-    }
-    LOG_I(common, "PSK('%s')", psk);
-
-    LOG_I(common, "PSK port(%d)", port);
+    LOG_I(common, "PMK port(%d)", port);
     if (!wifi_validate_wifi_port(port)) {
 	LOG_W(common, "invalid port(%d)", port);
 	ret = -1;
 	goto cleanup;
     }
 
-    LOG_I(common, "PSK len(%d)", psk_len);
-    if (!psk_len || psk_len > WIFI_LENGTH_PASSPHRASE) {
-	LOG_W(common, "invalid PSK len(%d)", psk_len);
-	ret = -1;
-	goto cleanup;
-    }
-
-    ret = wifi_config_set_wpa_psk_key(port, psk, psk_len);
+    ret = wifi_config_set_pmk(port, pmk);
     if (ret < 0) {
-	LOG_W(common, "wifi_config_set_wpa_psk_key() failed(%d)", ret);
+	LOG_W(common, "wifi_config_set_pmk() failed(%d)", ret);
 	goto cleanup;
     }
 
 cleanup:
-    if (psk_rsp) {
-        psk_rsp->result = ret;
-        LOG_I(common, "<-- SET PSK rsp len(%u) result(%d)", psk_rsp->cmd.len, ret);
-        int32_t err = spi_queue_send_req(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)psk_rsp);
+    if (rsp) {
+        rsp->result = ret;
+        LOG_I(common, "<-- SET PMK rsp len(%u) result(%d)", rsp->cmd.len, ret);
+        int32_t err = spi_queue_send_req(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)rsp);
+        if (err < 0) {
+            LOG_W(common, "spi_queue_send_req() failed(%d)", err);
+            ret = ret ? ret:err;
+        }
+    }
+
+    return ret;
+}
+
+static int32_t wifi_proc_set_channel_req(uint8_t channel, uint16_t len)
+{
+    size_t words_read;
+    uint32_t ch;
+    uint32_t port;
+    int32_t ret = 0;
+
+    struct mt7697_set_channel_rsp* rsp = (struct mt7697_set_channel_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
+    if (!rsp) {
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
+        ret = -1;
+	goto cleanup;
+    }
+
+    rsp->cmd.len = sizeof(struct mt7697_set_channel_rsp);
+    rsp->cmd.grp = MT7697_CMD_GRP_80211;
+    rsp->cmd.type = MT7697_CMD_SET_CHANNEL_RSP;
+
+    LOG_I(common, "--> SET CHANNEL(%d)", len);
+    if (len != sizeof(struct mt7697_set_channel_req)) {
+	LOG_W(common, "invalid set CHANNEL req len(%d != %d)", len, sizeof(struct mt7697_set_channel_req));
+	ret = -1;
+	goto cleanup;
+    }
+
+    words_read = spi_queue_read(channel, (uint32_t*)&port, LEN_TO_WORD(sizeof(uint32_t)));
+    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
+	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
+	ret = -1;
+	goto cleanup;
+    }
+
+    words_read = spi_queue_read(channel, (uint32_t*)&ch, LEN_TO_WORD(sizeof(uint32_t)));
+    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
+	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
+	ret = -1;
+	goto cleanup;
+    }
+
+    LOG_I(common, "channel(%u)", ch);
+    if (!ch) {
+	LOG_W(common, "invalid channel(%d)", ch);
+	ret = -1;
+	goto cleanup;
+    }
+    wifi_info.channel = ch;
+
+    LOG_I(common, "channel port(%d)", port);
+    if (!wifi_validate_wifi_port(port)) {
+	LOG_W(common, "invalid port(%d)", port);
+	ret = -1;
+	goto cleanup;
+    }
+
+    ret = wifi_config_set_channel(port, (uint8_t)ch);
+    if (ret < 0) {
+	LOG_W(common, "wifi_config_set_channel() failed(%d)", ret);
+	goto cleanup;
+    }
+
+cleanup:
+    if (rsp) {
+        rsp->result = ret;
+        LOG_I(common, "<-- SET CHANNEL rsp len(%u) result(%d)", rsp->cmd.len, ret);
+        int32_t err = spi_queue_send_req(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)rsp);
+        if (err < 0) {
+            LOG_W(common, "spi_queue_send_req() failed(%d)", err);
+            ret = ret ? ret:err;
+        }
+    }
+
+    return ret;
+}
+
+static int32_t wifi_proc_set_bssid_req(uint8_t channel, uint16_t len)
+{
+    uint8_t bssid[WIFI_MAC_ADDRESS_LENGTH] = {0};
+    size_t words_read;
+    int32_t ret = 0;
+
+    struct mt7697_set_bssid_rsp* rsp = (struct mt7697_set_bssid_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
+    if (!rsp) {
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
+        ret = -1;
+	goto cleanup;
+    }
+
+    rsp->cmd.len = sizeof(struct mt7697_set_bssid_rsp);
+    rsp->cmd.grp = MT7697_CMD_GRP_80211;
+    rsp->cmd.type = MT7697_CMD_SET_BSSID_RSP;
+
+    LOG_I(common, "--> SET BSSID(%d)", len);
+    if (len != sizeof(struct mt7697_set_bssid_req)) {
+	LOG_W(common, "invalid set BSSID req len(%d != %d)", len, sizeof(struct mt7697_set_bssid_req));
+	ret = -1;
+	goto cleanup;
+    }
+
+    words_read = spi_queue_read(channel, (uint32_t*)bssid, LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH));
+    if (words_read != LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH)) {
+	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH));
+	ret = -1;
+	goto cleanup;
+    }
+    LOG_HEXDUMP_I(common, "BSSID", bssid, WIFI_MAC_ADDRESS_LENGTH);
+ 
+    ret = wifi_config_set_bssid(bssid);
+    if (ret < 0) {
+	LOG_W(common, "wifi_config_set_bssid() failed(%d)", ret);
+	goto cleanup;
+    }
+
+cleanup:
+    if (rsp) {
+        rsp->result = ret;
+        LOG_I(common, "<-- SET BSSID rsp len(%u) result(%d)", rsp->cmd.len, ret);
+        int32_t err = spi_queue_send_req(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)rsp);
+        if (err < 0) {
+            LOG_W(common, "spi_queue_send_req() failed(%d)", err);
+            ret = ret ? ret:err;
+        }
+    }
+
+    return ret;
+}
+
+static int32_t wifi_proc_set_ssid_req(uint8_t channel, uint16_t len)
+{
+    uint8_t ssid[WIFI_MAX_LENGTH_OF_SSID + 1] = {0};
+    size_t words_read;
+    uint32_t ssid_len;
+    uint32_t port;
+    int32_t ret = 0;
+
+    struct mt7697_set_ssid_rsp* rsp = (struct mt7697_set_ssid_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
+    if (!rsp) {
+	LOG_W(common, "MT7697_S2M_QUEUE() failed");
+        ret = -1;
+	goto cleanup;
+    }
+
+    rsp->cmd.len = sizeof(struct mt7697_set_ssid_rsp);
+    rsp->cmd.grp = MT7697_CMD_GRP_80211;
+    rsp->cmd.type = MT7697_CMD_SET_SSID_RSP;
+
+    LOG_I(common, "--> SET SSID(%d)", len);
+    if (len != sizeof(struct mt7697_set_ssid_req)) {
+	LOG_W(common, "invalid set BSSID req len(%d != %d)", len, sizeof(struct mt7697_set_ssid_rsp));
+	ret = -1;
+	goto cleanup;
+    }
+
+    words_read = spi_queue_read(channel, (uint32_t*)&port, LEN_TO_WORD(sizeof(uint32_t)));
+    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
+	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
+	ret = -1;
+	goto cleanup;
+    }
+
+    words_read = spi_queue_read(channel, (uint32_t*)&ssid_len, LEN_TO_WORD(sizeof(uint32_t)));
+    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
+	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
+	ret = -1;
+	goto cleanup;
+    }
+
+    words_read = spi_queue_read(channel, (uint32_t*)ssid, LEN_TO_WORD(WIFI_MAX_LENGTH_OF_SSID));
+    if (words_read != LEN_TO_WORD(WIFI_MAX_LENGTH_OF_SSID)) {
+	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(WIFI_MAX_LENGTH_OF_SSID));
+	ret = -1;
+	goto cleanup;
+    }
+
+    LOG_I(common, "SSID len(%u)", ssid_len);
+    if (ssid_len > WIFI_MAX_LENGTH_OF_SSID) {
+	LOG_W(common, "invalid SSID len(%u > %u)", ssid_len, WIFI_MAX_LENGTH_OF_SSID);
+	ret = -1;
+	goto cleanup;
+    }
+
+    LOG_I(common, "SSID port(%d)", port);
+    if (!wifi_validate_wifi_port(port)) {
+	LOG_W(common, "invalid port(%d)", port);
+	ret = -1;
+	goto cleanup;
+    }
+
+    ssid[ssid_len] = '\0';
+    LOG_I(common, "SSID('%s')", ssid); 
+    ret = wifi_config_set_ssid(port, ssid, ssid_len);
+    if (ret < 0) {
+	LOG_W(common, "wifi_config_set_ssid() failed(%d)", ret);
+	goto cleanup;
+    }
+
+cleanup:
+    if (rsp) {
+        rsp->result = ret;
+        LOG_I(common, "<-- SET SSID rsp len(%u) result(%d)", rsp->cmd.len, ret);
+        int32_t err = spi_queue_send_req(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)rsp);
+        if (err < 0) {
+            LOG_W(common, "spi_queue_send_req() failed(%d)", err);
+            ret = ret ? ret:err;
+        }
+    }
+
+    return ret;
+}
+
+static int32_t wifi_proc_reload_settings_req(uint8_t channel, uint16_t len)
+{
+    int32_t ret = 0;
+
+    struct mt7697_reload_settings_rsp* rsp = (struct mt7697_reload_settings_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
+    if (!rsp) {
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
+        ret = -1;
+	goto cleanup;
+    }
+
+    LOG_I(common, "--> CONNECT RSP(%d)", len);
+    rsp->cmd.len = sizeof(struct mt7697_reload_settings_rsp);
+    rsp->cmd.grp = MT7697_CMD_GRP_80211;
+    rsp->cmd.type = MT7697_CMD_RELOAD_SETTINGS_RSP;
+
+    ret = wifi_config_reload_setting();
+    if (ret < 0) {
+	LOG_W(common, "wifi_config_reload_setting() failed(%d)", ret);
+	goto cleanup;
+    }
+
+cleanup:
+    if (rsp) {
+        rsp->result = ret;
+        LOG_I(common, "<-- RELOAD SETTINGS rsp len(%u) result(%d)", rsp->cmd.len, ret);
+        int32_t err = spi_queue_send_req(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)rsp);
         if (err < 0) {
             LOG_W(common, "spi_queue_send_req() failed(%d)", err);
             ret = ret ? ret:err;
@@ -510,9 +678,9 @@ static int32_t wifi_proc_mac_addr_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_mac_addr_rsp* mac_addr_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_mac_addr_rsp)));
+    struct mt7697_mac_addr_rsp* mac_addr_rsp = (struct mt7697_mac_addr_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!mac_addr_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -571,9 +739,9 @@ static int32_t wifi_proc_get_wireless_mode_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_get_wireless_mode_rsp* wireless_mode_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_get_wireless_mode_rsp)));
+    struct mt7697_get_wireless_mode_rsp* wireless_mode_rsp = (struct mt7697_get_wireless_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!wireless_mode_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -632,9 +800,9 @@ static int32_t wifi_proc_set_wireless_mode_req(uint8_t channel, uint16_t len)
     uint32_t mode;
     int32_t ret = 0;
 
-    struct mt7697_set_wireless_mode_rsp* wireless_mode_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_set_wireless_mode_rsp)));
+    struct mt7697_set_wireless_mode_rsp* wireless_mode_rsp = (struct mt7697_set_wireless_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!wireless_mode_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -695,9 +863,9 @@ static int32_t wifi_proc_get_cfg_req(uint8_t channel, uint16_t len)
 {
     int32_t ret = 0;
 
-    struct mt7697_cfg_rsp* cfg_rsp = calloc(1, LEN32_ALIGNED(sizeof(struct mt7697_cfg_rsp)));
+    struct mt7697_cfg_rsp* cfg_rsp = (struct mt7697_cfg_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!cfg_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -803,9 +971,9 @@ static int32_t wifi_proc_set_opmode_req(uint8_t channel, uint16_t len)
     uint32_t opmode;
     int32_t ret = 0;
 
-    struct mt7697_set_op_mode_rsp* op_mode_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_set_op_mode_rsp)));
+    struct mt7697_set_op_mode_rsp* op_mode_rsp = (struct mt7697_set_op_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!op_mode_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -854,9 +1022,9 @@ static int32_t wifi_proc_get_radio_state_req(uint8_t channel, uint16_t len)
     int32_t ret = 0;
     uint8_t opmode;
 
-    struct mt7697_get_radio_state_rsp* radio_state_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_get_radio_state_rsp)));
+    struct mt7697_get_radio_state_rsp* radio_state_rsp = (struct mt7697_get_radio_state_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!radio_state_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -911,9 +1079,9 @@ static int32_t wifi_proc_set_radio_state_req(uint8_t channel, uint16_t len)
     int32_t ret = 0;
     uint8_t opmode;
 
-    struct mt7697_set_radio_state_rsp* radio_state_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_set_radio_state_rsp)));
+    struct mt7697_set_radio_state_rsp* radio_state_rsp = (struct mt7697_set_radio_state_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!radio_state_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -974,9 +1142,9 @@ static int32_t wifi_proc_get_rx_filter_req(uint8_t channel, uint16_t len)
 {
     int32_t ret = 0;
 
-    struct mt7697_get_rx_filter_rsp* rx_filter_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_get_rx_filter_rsp)));
+    struct mt7697_get_rx_filter_rsp* rx_filter_rsp = (struct mt7697_get_rx_filter_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!rx_filter_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1019,9 +1187,9 @@ static int32_t wifi_proc_set_rx_filter_req(uint8_t channel, uint16_t len)
     uint32_t rx_filter = 0;
     int32_t ret = 0;
 
-    struct mt7697_set_rx_filter_rsp* rx_filter_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_set_rx_filter_rsp)));
+    struct mt7697_set_rx_filter_rsp* rx_filter_rsp = (struct mt7697_set_rx_filter_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!rx_filter_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1070,9 +1238,9 @@ static int32_t wifi_proc_get_smart_conn_filter_req(uint8_t channel, uint16_t len
     int32_t ret = 0;
     uint8_t flag;
 
-    struct mt7697_get_smart_conn_filter_rsp* smart_conn_filter_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_get_smart_conn_filter_rsp)));
+    struct mt7697_get_smart_conn_filter_rsp* smart_conn_filter_rsp = (struct mt7697_get_smart_conn_filter_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!smart_conn_filter_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1111,9 +1279,9 @@ static int32_t wifi_proc_set_smart_conn_filter_req(uint8_t channel, uint16_t len
     uint32_t flag;
     int32_t ret = 0;
     
-    struct mt7697_set_smart_conn_filter_rsp* smart_conn_filter_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_set_smart_conn_filter_rsp)));
+    struct mt7697_set_smart_conn_filter_rsp* smart_conn_filter_rsp = (struct mt7697_set_smart_conn_filter_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!smart_conn_filter_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1162,9 +1330,9 @@ static int32_t wifi_proc_get_listen_interval_req(uint8_t channel, uint16_t len)
     int32_t ret = 0;
     uint8_t listen_interval;
 
-    struct mt7697_get_listen_interval_rsp* listen_interval_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_get_listen_interval_rsp)));
+    struct mt7697_get_listen_interval_rsp* listen_interval_rsp = (struct mt7697_get_listen_interval_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!listen_interval_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1208,9 +1376,9 @@ static int32_t wifi_proc_set_listen_interval_req(uint8_t channel, uint16_t len)
     uint32_t interval = 0;
     int32_t ret = 0;
 
-    struct mt7697_set_listen_interval_rsp* listen_interval_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_set_listen_interval_rsp)));
+    struct mt7697_set_listen_interval_rsp* listen_interval_rsp = (struct mt7697_set_listen_interval_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!listen_interval_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1261,9 +1429,9 @@ static int32_t wifi_proc_get_security_mode_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_get_security_mode_rsp* security_mode_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_get_security_mode_rsp)));
+    struct mt7697_get_security_mode_rsp* security_mode_rsp = (struct mt7697_get_security_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!security_mode_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1325,9 +1493,9 @@ static int32_t wifi_proc_set_security_mode_req(uint8_t channel, uint16_t len)
     uint32_t encrypt_type;
     int32_t ret = 0;
 
-    struct mt7697_set_security_mode_rsp* security_mode_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_set_security_mode_rsp)));
+    struct mt7697_set_security_mode_rsp* security_mode_rsp = (struct mt7697_set_security_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!security_mode_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1397,9 +1565,9 @@ static int32_t wifi_proc_scan_req(uint8_t channel, uint16_t len)
     struct mt7697_scan_req scan_req;
     int32_t ret = 0;
 
-    struct mt7697_scan_rsp* scan_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_scan_rsp)));
+    struct mt7697_scan_rsp* scan_rsp = (struct mt7697_scan_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!scan_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1452,9 +1620,9 @@ static int32_t wifi_proc_scan_stop_req(uint8_t channel, uint16_t len)
 {
     int32_t ret = 0;
 
-    struct mt7697_scan_stop_rsp* scan_stop_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_scan_stop_rsp)));
+    struct mt7697_scan_stop_rsp* scan_stop_rsp = (struct mt7697_scan_stop_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!scan_stop_rsp) {
-        LOG_W(common, "malloc() failed");
+        LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1491,171 +1659,17 @@ cleanup:
     return ret;
 }
 
-static int32_t wifi_proc_connect_req(uint8_t channel, uint16_t len)
-{
-    uint8_t bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)] = {0};
-    uint8_t ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)] = {0};
-    struct mt7697_connect_rsp* connect_rsp;
-    size_t words_read;
-    uint32_t port;
-    uint32_t ssid_len;
-    uint32_t chan = 0;
-    int32_t ret = 0;
-    uint8_t currChan = 0;
-    uint8_t link_status;
-
-    connect_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_connect_rsp)));
-    if (!connect_rsp) {
-        LOG_W(common, "malloc() failed");
-        ret = -1;
-	goto cleanup;
-    }
-
-    connect_rsp->rsp.cmd.len = sizeof(struct mt7697_connect_rsp);
-    connect_rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
-    connect_rsp->rsp.cmd.type = MT7697_CMD_CONNECT_RSP;
-
-    LOG_I(common, "--> CONNECT(%d)", len);
-    if (len != sizeof(struct mt7697_connect_req)) {
-        LOG_W(common, "invalid len(%d != %d)", len, sizeof(struct mt7697_connect_req));
-	ret = -1;
-	goto cleanup;
-    }
-
-    words_read = spi_queue_read(channel, (uint32_t*)&wifi_info.if_idx, LEN_TO_WORD(sizeof(wifi_info.if_idx)));
-    if (words_read != LEN_TO_WORD(sizeof(wifi_info.if_idx))) {
-	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(wifi_info.if_idx)));
-	ret = -1;
-	goto cleanup;
-    }
-    LOG_I(common, "if idx(%u)", wifi_info.if_idx);
-
-    words_read = spi_queue_read(channel, (uint32_t*)&port, LEN_TO_WORD(sizeof(port)));
-    if (words_read != LEN_TO_WORD(sizeof(port))) {
-        LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(port)));
-	ret = -1;
-	goto cleanup;
-    }
-    LOG_I(common, "port(%u)", port);
-
-    words_read = spi_queue_read(channel, (uint32_t*)&chan, LEN_TO_WORD(sizeof(chan)));
-    if (words_read != LEN_TO_WORD(sizeof(chan))) {
-	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(chan)));
-	ret = -1;
-	goto cleanup;
-    }
-
-    words_read = spi_queue_read(channel, (uint32_t*)bssid, LEN_TO_WORD(LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)));
-    if (words_read != LEN_TO_WORD(LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH))) {
-	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)));
-	ret = -1;
-	goto cleanup;
-    }
-
-    words_read = spi_queue_read(channel, (uint32_t*)&ssid_len, LEN_TO_WORD(sizeof(ssid_len)));
-    if (words_read != LEN_TO_WORD(sizeof(ssid_len))) {
-	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(ssid_len)));
-	ret = -1;
-	goto cleanup;
-    }
-
-    words_read = spi_queue_read(channel, (uint32_t*)ssid, LEN_TO_WORD(LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)));
-    if (words_read != LEN_TO_WORD(WIFI_MAX_LENGTH_OF_SSID)) {
-	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(WIFI_MAX_LENGTH_OF_SSID));
-	ret = -1;
-	goto cleanup;
-    }
-
-    LOG_I(common, "channel(%u)", chan);
-    if (chan == 0) {
-	LOG_W(common, "invalid chan(%d)", chan);
-	ret = -1;
-	goto cleanup;
-    }
-
-    LOG_I(common, "SSID len(%u)", ssid_len);
-    if ((ssid_len == 0) || (ssid_len > WIFI_MAX_LENGTH_OF_SSID)) {
-	LOG_W(common, "invalid SSID length(%d)", ssid_len);
-	ret = -1;
-	goto cleanup;
-    }
-
-    ret = wifi_connection_get_link_status(&link_status);
-    if (ret < 0) {
-	LOG_W(common, "wifi_connection_get_link_status() failed(%d)", ret);
-	goto cleanup;
-    }
-
-    if (link_status) {
-        LOG_W(common, "link status(%d)", link_status);
-	ret = -1;
-	goto cleanup;
-    }
-
-    ret = wifi_config_get_channel(port, &currChan);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_get_channel() failed(%d)", ret);    
-    }
-
-    if (currChan != chan) {
-        ret = wifi_config_set_channel(port, chan);
-        if (ret < 0) {
-	    LOG_W(common, "wifi_config_set_channel() failed(%d)", ret);
-	    goto cleanup;    
-        }
-    }    
-    wifi_info.channel = chan;
-
-    LOG_HEXDUMP_I(common, "BSSID", bssid, WIFI_MAC_ADDRESS_LENGTH);
-    ret = wifi_config_set_bssid(bssid);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_set_bssid() failed(%d)", ret);
-	goto cleanup;
-    }
-
-    LOG_I(common, "SSID('%s')", ssid);
-    ret = wifi_config_set_ssid(port, ssid, ssid_len);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_set_ssid() failed(%d)", ret);
-	goto cleanup;
-    }
-
-    LOG_I(common, "reload setting");
-    ret = wifi_config_reload_setting();
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_reload_setting() failed(%d)", ret);
-	goto cleanup;
-    }	
-
-cleanup:
-    if (connect_rsp) {
-	connect_rsp->if_idx = wifi_info.if_idx;
-        memcpy(connect_rsp->bssid, bssid, WIFI_MAC_ADDRESS_LENGTH);	
-    	connect_rsp->rsp.result = ret;
-
-	LOG_I(common, "<-- CONNECT RSP result(%d)", ret);
-    	int32_t err = spi_queue_send_req(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)connect_rsp);
-    	if (err < 0) {
-            LOG_W(common, "spi_queue_send_req() failed(%d)", err);
-	    ret = ret ? ret:err;
-    	}
-    }
-
-    return ret;
-}
-
 static int32_t wifi_proc_disconnect_req(uint8_t channel, uint16_t len)
 {
     uint8_t addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
-    struct mt7697_disconnect_rsp* disconnect_rsp;
     size_t words_read;
     uint32_t if_idx;
     uint32_t port;
     int32_t ret = 0;
 
-    disconnect_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_disconnect_rsp)));
+    struct mt7697_disconnect_rsp* disconnect_rsp = (struct mt7697_disconnect_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!disconnect_rsp) {
-        LOG_W(common, "malloc() failed");
+        LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1735,9 +1749,9 @@ static int32_t wifi_proc_register_rx_hndlr_req(uint8_t channel, uint16_t len)
 {
     int32_t ret = 0;
 
-    struct mt7697_register_rx_hndlr_rsp* reg_rx_hndlr_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_register_rx_hndlr_rsp)));
+    struct mt7697_register_rx_hndlr_rsp* reg_rx_hndlr_rsp = (struct mt7697_register_rx_hndlr_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!reg_rx_hndlr_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1777,9 +1791,9 @@ static int32_t wifi_proc_unregister_rx_hndlr_req(uint8_t channel, uint16_t len)
 {
     int32_t ret = 0;
 
-    struct mt7697_unregister_rx_hndlr_rsp* unreg_rx_hndlr_rsp = malloc(LEN32_ALIGNED(sizeof(struct mt7697_unregister_rx_hndlr_rsp)));
+    struct mt7697_unregister_rx_hndlr_rsp* unreg_rx_hndlr_rsp = (struct mt7697_unregister_rx_hndlr_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE);
     if (!unreg_rx_hndlr_rsp) {
-	LOG_W(common, "malloc() failed");
+	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
 	goto cleanup;
     }
@@ -1878,18 +1892,42 @@ int32_t wifi_proc_cmd(uint8_t channel, uint16_t len, uint8_t type)
     int32_t ret = 0;
 
     switch (type) {
-    case MT7697_CMD_GET_PSK_REQ:
-	ret = wifi_proc_get_psk_req(channel, len);
+    case MT7697_CMD_SET_PMK_REQ:
+	ret = wifi_proc_set_pmk_req(channel, len);
 	if (ret) {
-	    LOG_W(common, "wifi_proc_get_psk_req() failed(%d)", ret);
+	    LOG_W(common, "wifi_proc_set_pmk_req() failed(%d)", ret);
 	}
 
 	break;
 
-    case MT7697_CMD_SET_PSK_REQ:
-	ret = wifi_proc_set_psk_req(channel, len);
+    case MT7697_CMD_SET_CHANNEL_REQ:
+	ret = wifi_proc_set_channel_req(channel, len);
 	if (ret) {
-	    LOG_W(common, "wifi_proc_set_psk_req() failed(%d)", ret);
+	    LOG_W(common, "wifi_proc_set_channel_req() failed(%d)", ret);
+	}
+
+	break;
+
+    case MT7697_CMD_SET_BSSID_REQ:
+	ret = wifi_proc_set_bssid_req(channel, len);
+	if (ret) {
+	    LOG_W(common, "wifi_proc_set_bssid_req() failed(%d)", ret);
+	}
+
+	break;
+
+    case MT7697_CMD_SET_SSID_REQ:
+	ret = wifi_proc_set_ssid_req(channel, len);
+	if (ret) {
+	    LOG_W(common, "wifi_proc_set_ssid_req() failed(%d)", ret);
+	}
+
+	break;
+
+    case MT7697_CMD_RELOAD_SETTINGS_REQ:
+        ret = wifi_proc_reload_settings_req(channel, len);
+	if (ret) {
+	    LOG_W(common, "wifi_proc_reload_settings_req() failed(%d)", ret);
 	}
 
 	break;
@@ -2026,14 +2064,6 @@ int32_t wifi_proc_cmd(uint8_t channel, uint16_t len, uint8_t type)
  	ret = wifi_proc_scan_stop_req(channel, len);
 	if (ret) {
 	    LOG_W(common, "wifi_proc_scan_stop_req() failed(%d)", ret);
-	}
-
-	break;
-
-    case MT7697_CMD_CONNECT_REQ:
-	ret = wifi_proc_connect_req(channel, len);
-	if (ret) {
-	    LOG_W(common, "wifi_proc_connect_req() failed(%d)", ret);
 	}
 
 	break;

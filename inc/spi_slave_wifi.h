@@ -18,6 +18,7 @@
 #define mt7697_scan_stop			mt7697_cmd_hdr
 #define mt7697_register_rx_hndlr_req		mt7697_cmd_hdr
 #define mt7697_unregister_rx_hndlr_req		mt7697_cmd_hdr
+#define mt7697_reload_settings_req		mt7697_cmd_hdr
 
 #define mt7697_set_wireless_mode_rsp		mt7697_rsp_hdr
 #define mt7697_set_radio_state_rsp		mt7697_rsp_hdr
@@ -25,11 +26,15 @@
 #define mt7697_set_rx_filter_rsp		mt7697_rsp_hdr
 #define mt7697_set_smart_conn_filter_rsp	mt7697_rsp_hdr
 #define mt7697_set_listen_interval_rsp		mt7697_rsp_hdr
-#define mt7697_set_psk_rsp			mt7697_rsp_hdr
+#define mt7697_set_pmk_rsp			mt7697_rsp_hdr
+#define mt7697_set_channel_rsp			mt7697_rsp_hdr
+#define mt7697_set_bssid_rsp			mt7697_rsp_hdr
+#define mt7697_set_ssid_rsp			mt7697_rsp_hdr
 #define mt7697_set_security_mode_rsp		mt7697_rsp_hdr
 #define mt7697_scan_stop_rsp			mt7697_rsp_hdr
 #define mt7697_register_rx_hndlr_rsp		mt7697_rsp_hdr
 #define mt7697_unregister_rx_hndlr_rsp		mt7697_rsp_hdr
+#define mt7697_reload_settings_rsp		mt7697_rsp_hdr
 #define mt7697_disconnect_rsp			mt7697_rsp_hdr
 
 enum mt7697_wifi_cmd_types {
@@ -73,13 +78,17 @@ enum mt7697_wifi_cmd_types {
 	MT7697_CMD_SCAN_COMPLETE_IND,
 	MT7697_CMD_SCAN_STOP,
 	MT7697_CMD_SCAN_STOP_RSP,
-	MT7697_CMD_GET_PSK_REQ,
-	MT7697_CMD_GET_PSK_RSP,
-	MT7697_CMD_SET_PSK_REQ,
-	MT7697_CMD_SET_PSK_RSP,
+	MT7697_CMD_SET_PMK_REQ,
+	MT7697_CMD_SET_PMK_RSP,
+	MT7697_CMD_SET_CHANNEL_REQ,
+	MT7697_CMD_SET_CHANNEL_RSP,
+	MT7697_CMD_SET_BSSID_REQ,
+	MT7697_CMD_SET_BSSID_RSP,
+	MT7697_CMD_SET_SSID_REQ,
+	MT7697_CMD_SET_SSID_RSP,
+	MT7697_CMD_RELOAD_SETTINGS_REQ,
+	MT7697_CMD_RELOAD_SETTINGS_RSP,
 	MT7697_CMD_CONNECT_IND,
-	MT7697_CMD_CONNECT_REQ,
-	MT7697_CMD_CONNECT_RSP,
 	MT7697_CMD_DISCONNECT_IND,
 	MT7697_CMD_DISCONNECT_REQ,
 	MT7697_CMD_DISCONNECT_RSP,
@@ -191,22 +200,28 @@ struct mt7697_scan_complete_ind {
 	uint32_t 			if_idx;
 } __attribute__((packed, aligned(4)));
 
-struct mt7697_get_psk_req {
+struct mt7697_set_pmk_req {
 	struct mt7697_cmd_hdr		cmd;
 	uint32_t			port;
+	uint8_t				pmk[LEN32_ALIGNED(WIFI_LENGTH_PMK)];
 } __attribute__((packed, aligned(4)));
 
-struct mt7697_get_psk_rsp {
-	struct mt7697_rsp_hdr		rsp;
-	uint32_t			len;
-	uint8_t				psk[LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
+struct mt7697_set_channel_req {
+	struct mt7697_cmd_hdr		cmd;
+	uint32_t			port;
+	uint32_t			ch;
 } __attribute__((packed, aligned(4)));
 
-struct mt7697_set_psk_req {
+struct mt7697_set_bssid_req {
+	struct mt7697_cmd_hdr		cmd;
+	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+} __attribute__((packed, aligned(4)));
+
+struct mt7697_set_ssid_req {
 	struct mt7697_cmd_hdr		cmd;
 	uint32_t			port;
 	uint32_t			len;
-	uint8_t				psk[LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
+	uint8_t				ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_set_security_mode_req {
@@ -227,22 +242,6 @@ struct mt7697_get_security_mode_rsp {
 	uint32_t 			if_idx;
 	uint32_t			auth_mode;
 	uint32_t			encrypt_type;
-} __attribute__((packed, aligned(4)));
-
-struct mt7697_connect_req {
-	struct mt7697_cmd_hdr		cmd;
-	uint32_t 			if_idx;
-	uint32_t			port;
-	uint32_t			channel;
-	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
-	uint32_t			ssid_len;
-	uint8_t				ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
-} __attribute__((packed, aligned(4)));
-
-struct mt7697_connect_rsp {
-	struct mt7697_rsp_hdr		rsp;
-	uint32_t 			if_idx;
-	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } __attribute__((packed, aligned(4)));
 
 struct mt7697_connect_ind {
