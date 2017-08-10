@@ -353,6 +353,12 @@ static int32_t proc_queue_reset_cmd(uint8_t channel)
 	goto cleanup;
     }
 
+    if (xQueueReset(queueMain.info[s2m_ch].sendQ) != pdPASS) {
+	LOG_W(common, "xQueueReset() failed");
+	ret = -1;
+	goto cleanup;
+    }
+
 cleanup:
     rsp->result = ret;
     LOG_I(common, "<-- RESET QUEUE(%u/%u) RSP len(%u) result(%d)", m2s_ch, s2m_ch, rsp->cmd.len, ret);
@@ -600,15 +606,16 @@ uint8_t* spi_queue_pool_alloc_msg(uint8_t ch)
 {
     uint8_t* ret = NULL;
 
-    configASSERT(queueMain.info[ch].msg_pool.msg_list != NULL);
-    if ((queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_SENDQ_LEN != queueMain.info[ch].msg_pool.free_idx) {
-        LOG_I(common, "alloc(%u)", queueMain.info[ch].msg_pool.alloc_idx);
-        ret = queueMain.info[ch].msg_pool.msg_list[queueMain.info[ch].msg_pool.alloc_idx];
+    if (queueMain.info[ch].msg_pool.msg_list != NULL) {
+        if ((queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_SENDQ_LEN != queueMain.info[ch].msg_pool.free_idx) {
+            LOG_I(common, "alloc(%u)", queueMain.info[ch].msg_pool.alloc_idx);
+            ret = queueMain.info[ch].msg_pool.msg_list[queueMain.info[ch].msg_pool.alloc_idx];
 
-        queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx == (uint16_t)-1) ?
-            queueMain.info[ch].msg_pool.alloc_idx : queueMain.info[ch].msg_pool.free_idx;
+            queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx == (uint16_t)-1) ?
+                queueMain.info[ch].msg_pool.alloc_idx : queueMain.info[ch].msg_pool.free_idx;
 
-        queueMain.info[ch].msg_pool.alloc_idx = (queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_SENDQ_LEN;    
+            queueMain.info[ch].msg_pool.alloc_idx = (queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_SENDQ_LEN;    
+        }
     }
 
     return ret;
