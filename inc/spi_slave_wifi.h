@@ -219,7 +219,6 @@ struct mt7697_connect_ind {
 
 struct mt7697_disconnect_req {
 	struct mt7697_cmd_hdr		cmd;
-	uint32_t 			if_idx;
 	uint32_t			port;
 	uint8_t				addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } __attribute__((packed, aligned(4)));

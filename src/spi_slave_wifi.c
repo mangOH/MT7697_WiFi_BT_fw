@@ -1389,7 +1389,6 @@ static int32_t wifi_proc_disconnect_req(uint8_t channel, uint16_t len)
 {
     uint8_t addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
     size_t words_read;
-    uint32_t if_idx;
     uint32_t port;
     int32_t ret = 0;
 
@@ -1410,16 +1409,6 @@ static int32_t wifi_proc_disconnect_req(uint8_t channel, uint16_t len)
 	ret = -1;
 	goto cleanup;
     }
-
-    words_read = spi_queue_read(channel, (uint32_t*)&if_idx, LEN_TO_WORD(sizeof(if_idx)));
-    if (words_read != LEN_TO_WORD(sizeof(if_idx))) {
-	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(if_idx)));
-	ret = -1;
-	goto cleanup;
-    }
-    wifi_info.if_idx = if_idx;
-    LOG_I(common, "if idx(%u)", wifi_info.if_idx);
-    wifi_info.if_idx = 
 
     words_read = spi_queue_read(channel, (uint32_t*)&port, LEN_TO_WORD(sizeof(port)));
     if (words_read != LEN_TO_WORD(sizeof(port))) {
@@ -1442,6 +1431,7 @@ static int32_t wifi_proc_disconnect_req(uint8_t channel, uint16_t len)
 	goto cleanup;
     }
 
+    wifi_info.if_idx = (uint16_t)-1;
     if (port == WIFI_PORT_AP) {
 	LOG_HEXDUMP_I(common, "BSSID", addr, WIFI_MAC_ADDRESS_LENGTH);
 	ret = wifi_connection_disconnect_sta(addr);
