@@ -25,8 +25,6 @@ static void _set_slave_to_master_mailbox(uint8_t);
 static void _clear_master_to_slave_mailbox(uint8_t);
 static int32_t _notify_spi_master(void);
 static struct QueueSpecification* _get_queue(uint8_t);
-static struct QueueSpecification* _get_valid_queue(uint8_t);
-static struct QueueSpecification* _get_valid_directed_queue(uint8_t, enum QueueDirection);
 static void _spi_slave_interrupt_handler(void*);
 static void spi_queue_m2s_task(void*);
 static void spi_queue_s2m_task(void*);
@@ -126,29 +124,9 @@ static struct QueueSpecification* _get_queue(uint8_t channel)
     return qs;
 }
 
-static struct QueueSpecification* _get_valid_queue(uint8_t channel)
-{
-    struct QueueSpecification* qs = _get_queue(channel);
-    configASSERT(BF_GET(qs->flags, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH));
-    return qs;
-}
-
 static struct QueueSpecification* _get_directed_queue(uint8_t channel, enum QueueDirection direction)
 {
     struct QueueSpecification* qs = _get_queue(channel);
-    enum QueueDirection actual_direction =
-        BF_GET(qs->flags, FLAGS_DIRECTION_OFFSET, FLAGS_DIRECTION_WIDTH);
-    if (actual_direction != direction) {
-        LOG_W(common, "invalid direction(%u != %u)", direction, actual_direction);
-        configASSERT(actual_direction == direction);
-    }
-
-    return qs;
-}
-
-static struct QueueSpecification* _get_valid_directed_queue(uint8_t channel, enum QueueDirection direction)
-{
-    struct QueueSpecification* qs = _get_valid_queue(channel);
     enum QueueDirection actual_direction =
         BF_GET(qs->flags, FLAGS_DIRECTION_OFFSET, FLAGS_DIRECTION_WIDTH);
     if (actual_direction != direction) {
@@ -166,14 +144,14 @@ static int32_t spi_queue_init_msg_pool(uint8_t ch, uint32_t msg_len)
     if (queueMain.info[ch].msg_pool.msg_list == NULL) {
         LOG_I(common, "init msg pool/len(%u/%u)", ch, msg_len);
 
-        queueMain.info[ch].msg_pool.msg_list = malloc(QUEUE_SENDQ_LEN * sizeof(uint8_t*));
+        queueMain.info[ch].msg_pool.msg_list = malloc(QUEUE_MSG_POOL_LEN * sizeof(uint8_t*));
 	if (!queueMain.info[ch].msg_pool.msg_list) {
             LOG_W(common, "malloc() failed");
             ret = -1;
 	    goto cleanup;
         }
 
-        uint8_t* buf = malloc(QUEUE_SENDQ_LEN * msg_len);
+        uint8_t* buf = malloc(QUEUE_MSG_POOL_LEN * msg_len);
         if (!buf) {
             LOG_W(common, "malloc() failed");
             ret = -1;
@@ -181,12 +159,13 @@ static int32_t spi_queue_init_msg_pool(uint8_t ch, uint32_t msg_len)
         }
 
 	uint8_t* ptr = buf;
-        for (unsigned int i = 0; i < QUEUE_SENDQ_LEN; i++) {
+        for (unsigned int i = 0; i < QUEUE_MSG_POOL_LEN; i++) {
 	    queueMain.info[ch].msg_pool.msg_list[i] = ptr;
 	    ptr += msg_len;
         }
     }
 
+    queueMain.info[ch].msg_pool.used = 0;
     queueMain.info[ch].msg_pool.alloc_idx = 0;
     queueMain.info[ch].msg_pool.free_idx = (uint16_t)-1;
 
@@ -197,13 +176,16 @@ cleanup:
 static void spi_queue_pool_free_msg(uint8_t ch)
 {
     configASSERT(queueMain.info[ch].msg_pool.msg_list[0] != NULL);
+    configASSERT(queueMain.info[ch].msg_pool.used > 0);
     configASSERT(queueMain.info[ch].msg_pool.free_idx != (uint16_t)-1);
     LOG_I(common, "free(%u)", queueMain.info[ch].msg_pool.free_idx);
-    queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx + 1) % QUEUE_SENDQ_LEN;
+    queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx + 1) % QUEUE_MSG_POOL_LEN;
+    queueMain.info[ch].msg_pool.used--;
 }
 
 static int32_t proc_queue_init_cmd(uint8_t channel)
 {
+    struct mt7697_queue_init_rsp* rsp = NULL;
     uint32_t m2s_ch, s2m_ch;
     int32_t ret = 0;
 
@@ -228,7 +210,7 @@ static int32_t proc_queue_init_cmd(uint8_t channel)
 	goto cleanup;
     }
 
-    struct mt7697_queue_init_rsp* rsp = (struct mt7697_queue_init_rsp*)spi_queue_pool_alloc_msg(s2m_ch);
+    rsp = (struct mt7697_queue_init_rsp*)spi_queue_pool_alloc_msg(s2m_ch, QUEUE_MSG_HI_PRIORITY);
     if (!rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -246,12 +228,14 @@ static int32_t proc_queue_init_cmd(uint8_t channel)
     qsS2M->flags |= BF_DEFINE(1, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH);
 
 cleanup:
-    rsp->result = ret;
-    LOG_I(common, "<-- INIT QUEUE(%u/%u) RSP len(%u) result(%d)", m2s_ch, s2m_ch, rsp->cmd.len, ret);
-    ret = spi_queue_send_req(s2m_ch, (struct mt7697_rsp_hdr*)rsp);
-    if (ret < 0) {
-        LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
-        goto cleanup;
+    if (rsp) {
+        rsp->result = ret;
+        LOG_I(common, "<-- INIT QUEUE(%u/%u) RSP len(%u) result(%d)", m2s_ch, s2m_ch, rsp->cmd.len, ret);
+        ret = spi_queue_send_req(s2m_ch, (struct mt7697_rsp_hdr*)rsp);
+        if (ret < 0) {
+            LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
+            goto cleanup;
+        }
     }
 
     return ret;
@@ -277,37 +261,19 @@ static int32_t proc_queue_unused_cmd(uint8_t channel)
 	goto cleanup;
     }
 
-    struct mt7697_queue_unused_rsp* rsp = (struct mt7697_queue_unused_rsp*)spi_queue_pool_alloc_msg(s2m_ch);
-    if (!rsp) {
-	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
-        ret = -1;
-	goto cleanup;
-    }
-
-    rsp->cmd.len = sizeof(struct mt7697_queue_unused_rsp);
-    rsp->cmd.grp = MT7697_CMD_GRP_QUEUE;
-    rsp->cmd.type = MT7697_CMD_QUEUE_UNUSED_RSP;
-
     LOG_I(common, "unused queue(%u/%u)", m2s_ch, s2m_ch);
-    struct QueueSpecification* qsM2S = _get_valid_queue(m2s_ch);
-    struct QueueSpecification* qsS2M = _get_valid_queue(s2m_ch);
+    struct QueueSpecification* qsM2S = _get_queue(m2s_ch);
+    struct QueueSpecification* qsS2M = _get_queue(s2m_ch);
     qsM2S->flags &= ~BF_DEFINE(1, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH);
     qsS2M->flags &= ~BF_DEFINE(1, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH);
 
 cleanup:
-    rsp->result = ret;
-    LOG_I(common, "<-- UNUSED QUEUE(%u/%u) RSP len(%u) result(%d)", m2s_ch, s2m_ch, rsp->cmd.len, ret);
-    ret = spi_queue_send_req(s2m_ch, (struct mt7697_rsp_hdr*)rsp);
-    if (ret < 0) {
-        LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
-        goto cleanup;
-    }
-
     return ret;
 }
 
 static int32_t proc_queue_reset_cmd(uint8_t channel)
 {
+    struct mt7697_queue_reset_rsp* rsp = NULL;
     uint32_t m2s_ch, s2m_ch;
     int32_t ret = 0;
 
@@ -326,7 +292,7 @@ static int32_t proc_queue_reset_cmd(uint8_t channel)
 	goto cleanup;
     }
 
-    struct mt7697_queue_reset_rsp* rsp = (struct mt7697_queue_reset_rsp*)spi_queue_pool_alloc_msg(s2m_ch);
+    rsp = (struct mt7697_queue_reset_rsp*)spi_queue_pool_alloc_msg(s2m_ch, QUEUE_MSG_HI_PRIORITY);
     if (!rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -338,8 +304,8 @@ static int32_t proc_queue_reset_cmd(uint8_t channel)
     rsp->cmd.type = MT7697_CMD_QUEUE_RESET_RSP;
 
     LOG_I(common, "reset queue(%u/%u)", m2s_ch, s2m_ch);
-    struct QueueSpecification* qsM2S = _get_valid_queue(m2s_ch);
-    struct QueueSpecification* qsS2M = _get_valid_queue(s2m_ch);
+    struct QueueSpecification* qsM2S = _get_queue(m2s_ch);
+    struct QueueSpecification* qsS2M = _get_queue(s2m_ch);
 
     qsM2S->read_offset = 0;
     qsM2S->write_offset = 0;
@@ -360,12 +326,14 @@ static int32_t proc_queue_reset_cmd(uint8_t channel)
     }
 
 cleanup:
-    rsp->result = ret;
-    LOG_I(common, "<-- RESET QUEUE(%u/%u) RSP len(%u) result(%d)", m2s_ch, s2m_ch, rsp->cmd.len, ret);
-    ret = spi_queue_send_req(s2m_ch, (struct mt7697_rsp_hdr*)rsp);
-    if (ret < 0) {
-        LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
-        goto cleanup;
+    if (rsp) {
+        rsp->result = ret;
+        LOG_I(common, "<-- RESET QUEUE(%u/%u) RSP len(%u) result(%d)", m2s_ch, s2m_ch, rsp->cmd.len, ret);
+        ret = spi_queue_send_req(s2m_ch, (struct mt7697_rsp_hdr*)rsp);
+        if (ret < 0) {
+            LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
+            goto cleanup;
+        }
     }
 
     return ret;
@@ -415,8 +383,7 @@ cleanup:
 
 static size_t spi_queue_write(uint8_t channel, const uint32_t* buffer, size_t num_words)
 {
-    struct QueueSpecification* qs = _get_valid_directed_queue(channel, QUEUE_DIRECTION_S2M);
-    configASSERT(qs);
+    struct QueueSpecification* qs = _get_directed_queue(channel, QUEUE_DIRECTION_S2M);
     const uint32_t buffer_num_words = BF_GET(qs->flags, FLAGS_NUM_WORDS_OFFSET, FLAGS_NUM_WORDS_WIDTH);
     uint16_t read_offset;
     uint16_t write_offset;
@@ -426,6 +393,11 @@ static size_t spi_queue_write(uint8_t channel, const uint32_t* buffer, size_t nu
     if (xSemaphoreTake(queueMain.info[channel].lock, portMAX_DELAY) != pdTRUE) {
 	LOG_E(common, "xSemaphoreTake() failed");
         goto cleanup;
+    }
+
+    if (!BF_GET(qs->flags, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH)) {
+	LOG_W(common, "queue(%u) unused", channel);
+	goto cleanup;
     }
 
     if (spi_queue_get_num_free_words(channel) < num_words) {
@@ -602,20 +574,29 @@ static void _spi_slave_interrupt_handler(void* data)
     }
 }
 
-uint8_t* spi_queue_pool_alloc_msg(uint8_t ch)
+uint8_t* spi_queue_pool_alloc_msg(uint8_t ch, uint8_t priority)
 {
     uint8_t* ret = NULL;
 
+    configASSERT(queueMain.info[ch].msg_pool.used <= QUEUE_MSG_POOL_LEN);
     if (queueMain.info[ch].msg_pool.msg_list != NULL) {
-        if ((queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_SENDQ_LEN != queueMain.info[ch].msg_pool.free_idx) {
+        if ((priority || (queueMain.info[ch].msg_pool.used < QUEUE_MSG_POOL_HI_WATER_MARK)) &&
+            ((queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_MSG_POOL_LEN != queueMain.info[ch].msg_pool.free_idx)) {
             LOG_I(common, "alloc(%u)", queueMain.info[ch].msg_pool.alloc_idx);
             ret = queueMain.info[ch].msg_pool.msg_list[queueMain.info[ch].msg_pool.alloc_idx];
 
             queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx == (uint16_t)-1) ?
                 queueMain.info[ch].msg_pool.alloc_idx : queueMain.info[ch].msg_pool.free_idx;
 
-            queueMain.info[ch].msg_pool.alloc_idx = (queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_SENDQ_LEN;    
+            queueMain.info[ch].msg_pool.alloc_idx = (queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_MSG_POOL_LEN;
+	    queueMain.info[ch].msg_pool.used++;    
         }
+	else {
+	    LOG_W(common, "q(%d) low priority msg dropped", ch);
+	}
+    }
+    else {
+        LOG_W(common, "q(%d) no msg pool", ch);
     }
 
     return ret;
@@ -644,6 +625,10 @@ int32_t spi_queue_init(void)
 		i, qs->flags, qs->base_address, qs->read_offset, qs->write_offset);
 
 	queueMain.info[i].msg_pool.msg_list = NULL;
+	queueMain.info[i].msg_pool.used = 0;
+	queueMain.info[i].msg_pool.alloc_idx = 0;
+	queueMain.info[i].msg_pool.free_idx = (uint16_t)-1;
+
 	queueMain.info[i].lock = xSemaphoreCreateMutex();
 	if (!queueMain.info[i].lock) {
 	    LOG_W(common, "xSemaphoreCreateMutex(%d) failed", i);

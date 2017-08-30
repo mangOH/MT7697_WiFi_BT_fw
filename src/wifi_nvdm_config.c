@@ -1508,6 +1508,7 @@ int32_t cf_set_channel(uint8_t port, uint8_t channel)
     }
     return WIFI_SUCC;
 }
+
 int save_cf_credential_to_nvdm(P_IOT_CONFIG_FREE_IE cred)
 {
     int status = 0;

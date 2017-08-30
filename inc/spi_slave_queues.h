@@ -76,11 +76,14 @@
 					 ((x) % sizeof(uint32_t) ? 1:0)) * sizeof(uint32_t))
 
 #define QUEUE_TASK_STACK_SIZE		4096
-#define QUEUE_SENDQ_LEN			16
+#define QUEUE_MSG_LO_PRIORITY		0
+#define QUEUE_MSG_HI_PRIORITY		1
+#define QUEUE_MSG_POOL_LEN		16
+#define QUEUE_MSG_POOL_HI_WATER_MARK	14
+#define QUEUE_SENDQ_LEN			(QUEUE_MSG_POOL_LEN)
 #define QUEUE_WORD_SIZE			2048
 
 #define mt7697_queue_init_rsp		mt7697_rsp_hdr
-#define mt7697_queue_unused_rsp		mt7697_rsp_hdr
 #define mt7697_queue_reset_rsp		mt7697_rsp_hdr
 
 enum QueueDirection {
@@ -98,7 +101,6 @@ enum mt7697q_cmd_types {
     MT7697_CMD_QUEUE_INIT = 0,
     MT7697_CMD_QUEUE_INIT_RSP,
     MT7697_CMD_QUEUE_UNUSED,
-    MT7697_CMD_QUEUE_UNUSED_RSP,
     MT7697_CMD_QUEUE_RESET,
     MT7697_CMD_QUEUE_RESET_RSP,
 };
@@ -150,6 +152,7 @@ struct QueueMemPool {
     uint8_t**                   msg_list;
     uint16_t			alloc_idx;
     uint16_t			free_idx;
+    uint16_t			used;
 };
 
 struct QueueInfo {
@@ -168,7 +171,7 @@ struct QueueMain {
 };
 
 int32_t spi_queue_init(void);
-uint8_t* spi_queue_pool_alloc_msg(uint8_t);
+uint8_t* spi_queue_pool_alloc_msg(uint8_t, uint8_t);
 int32_t spi_queue_send_req(uint8_t, const struct mt7697_rsp_hdr*);
 int32_t spi_queue_send_req_from_isr(uint8_t, const struct mt7697_rsp_hdr*);
 size_t spi_queue_read(uint8_t, uint32_t*, size_t);
