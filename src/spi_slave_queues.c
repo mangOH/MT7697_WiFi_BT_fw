@@ -178,7 +178,7 @@ static void spi_queue_pool_free_msg(uint8_t ch)
     configASSERT(queueMain.info[ch].msg_pool.msg_list[0] != NULL);
     configASSERT(queueMain.info[ch].msg_pool.used > 0);
     configASSERT(queueMain.info[ch].msg_pool.free_idx != (uint16_t)-1);
-    LOG_I(common, "free(%u)", queueMain.info[ch].msg_pool.free_idx);
+//    LOG_I(common, "free(%u)", queueMain.info[ch].msg_pool.free_idx);
     queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx + 1) % QUEUE_MSG_POOL_LEN;
     queueMain.info[ch].msg_pool.used--;
 }
@@ -582,7 +582,7 @@ uint8_t* spi_queue_pool_alloc_msg(uint8_t ch, uint8_t priority)
     if (queueMain.info[ch].msg_pool.msg_list != NULL) {
         if ((priority || (queueMain.info[ch].msg_pool.used < QUEUE_MSG_POOL_HI_WATER_MARK)) &&
             ((queueMain.info[ch].msg_pool.alloc_idx + 1) % QUEUE_MSG_POOL_LEN != queueMain.info[ch].msg_pool.free_idx)) {
-            LOG_I(common, "alloc(%u)", queueMain.info[ch].msg_pool.alloc_idx);
+//            LOG_I(common, "alloc(%u)", queueMain.info[ch].msg_pool.alloc_idx);
             ret = queueMain.info[ch].msg_pool.msg_list[queueMain.info[ch].msg_pool.alloc_idx];
 
             queueMain.info[ch].msg_pool.free_idx = (queueMain.info[ch].msg_pool.free_idx == (uint16_t)-1) ?

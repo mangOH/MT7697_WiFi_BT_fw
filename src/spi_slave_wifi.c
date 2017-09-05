@@ -34,8 +34,8 @@ static int32_t wifi_net_rx_hndlr(struct pbuf* buf, struct netif* netif)
     struct mt7697_rx_raw_packet	*rx_req = NULL;
     int32_t ret = 0;
 
-    LOG_I(common, "netif(%u) len(%u)", netif->num, buf->tot_len);
-    LOG_HEXDUMP_I(common, "pbuf ", buf->payload, buf->tot_len);
+//    LOG_I(common, "netif(%u) len(%u)", netif->num, buf->tot_len);
+//    LOG_HEXDUMP_I(common, "pbuf ", buf->payload, buf->tot_len);
 
     rx_req = (struct mt7697_rx_raw_packet*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_LO_PRIORITY);
     if (!rx_req) {
@@ -1482,14 +1482,14 @@ static int32_t wifi_proc_tx_raw_req(uint8_t channel, uint16_t len)
         goto cleanup;
     }
 
-    LOG_I(common, "Tx len(%d)", tx_len);
+//    LOG_I(common, "Tx len(%d)", tx_len);
     if (!tx_len || tx_len > sizeof(wifi_info.tx_data)) {
 	LOG_W(common, "invalid Tx len(%d)", tx_len);
 	ret = -1;
 	goto cleanup;
     }
 
-    LOG_HEXDUMP_I(common, "Tx packet", wifi_info.tx_data, tx_len);
+//    LOG_HEXDUMP_I(common, "Tx packet", wifi_info.tx_data, tx_len);
     ret = wifi_connection_send_raw_packet(wifi_info.tx_data, tx_len);
     if (ret < 0) {
 	LOG_W(common, "wifi_connection_send_raw_packet() failed(%d)", ret);
