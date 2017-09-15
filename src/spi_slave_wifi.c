@@ -10,6 +10,7 @@
 
 #include "nvdm.h"
 #include "lwip/netif.h"
+#include "ethernetif.h"
 
 #include <wifi_api.h>
 #include <wifi_rx_desc.h>
@@ -35,9 +36,11 @@ static int32_t wifi_net_rx_hndlr(struct pbuf* buf, struct netif* netif)
     int32_t ret = 0;
 
 //    LOG_I(common, "netif(%u) len(%u)", netif->num, buf->tot_len);
-//    LOG_HEXDUMP_I(common, "pbuf ", buf->payload, buf->tot_len);
+//    LOG_HEXDUMP_I(common, "Rx data ", buf->payload, buf->tot_len);
 
-    rx_req = (struct mt7697_rx_raw_packet*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_LO_PRIORITY);
+    rx_req = (struct mt7697_rx_raw_packet*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                    QUEUE_MSG_LO_PRIORITY, 
+                                                                    LEN32_ALIGNED(sizeof(struct mt7697_rx_raw_packet) + buf->tot_len));
     if (!rx_req) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -104,7 +107,7 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
         printf("%-8d", ap_data.wps_element.selected_registrar);
         printf("\n\n");
 
-	scan_ind = (struct mt7697_scan_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_LO_PRIORITY);
+	scan_ind = (struct mt7697_scan_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_LO_PRIORITY, LEN32_ALIGNED(sizeof(struct mt7697_scan_ind) + length));
         if (!scan_ind) {
 	    LOG_W(common, "spi_queue_pool_alloc_msg() failed");
             ret = -1;
@@ -133,7 +136,9 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
     {
 	LOG_I(common, "==> SCAN COMPLETE\n");
 
-        struct mt7697_scan_complete_ind* scan_complete_ind = (struct mt7697_scan_complete_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+        struct mt7697_scan_complete_ind* scan_complete_ind = (struct mt7697_scan_complete_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                        QUEUE_MSG_HI_PRIORITY, 
+                                                                                                                        LEN32_ALIGNED(sizeof(struct mt7697_scan_complete_ind)));
         if (!scan_complete_ind) {
 	    LOG_W(common, "spi_queue_pool_alloc_msg() failed");
             ret = -1;
@@ -166,7 +171,11 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
     case WIFI_EVENT_IOT_PORT_SECURE:
     {
 	LOG_I(common, "==> PORT SECURE\n");
-        struct mt7697_connect_ind* connect_ind = (struct mt7697_connect_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+//	if (wifi_info.netif) netif_set_link_up(wifi_info.netif);
+
+        struct mt7697_connect_ind* connect_ind = (struct mt7697_connect_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                      QUEUE_MSG_HI_PRIORITY, 
+                                                                                                      LEN32_ALIGNED(sizeof(struct mt7697_connect_ind)));
         if (!connect_ind) {
 	    LOG_W(common, "spi_queue_pool_alloc_msg() failed");
             ret = -1;
@@ -205,6 +214,7 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
 	uint8_t zero_bssid[WIFI_MAC_ADDRESS_LENGTH] = {0};
 
         LOG_I(common, "==> DISCONNECTED\n");
+//	if (wifi_info.netif) netif_set_link_down(wifi_info.netif);
 
 	LOG_HEXDUMP_I(common, "MAC", payload, length);
         if ((length < WIFI_MAC_ADDRESS_LENGTH) || !memcmp(payload, zero_bssid, WIFI_MAC_ADDRESS_LENGTH)) {
@@ -212,7 +222,9 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
 	}
 
 	if (wifi_info.if_idx != (uint16_t)-1) {
-	    struct mt7697_disconnect_ind* disconnect_ind = (struct mt7697_disconnect_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+	    struct mt7697_disconnect_ind* disconnect_ind = (struct mt7697_disconnect_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                   QUEUE_MSG_HI_PRIORITY,
+                                                                                                                   LEN32_ALIGNED(sizeof(struct mt7697_disconnect_ind)));
             if (!disconnect_ind) {
 	        LOG_W(common, "spi_queue_pool_alloc_msg() failed");
                 ret = -1;
@@ -245,6 +257,7 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
     case WIFI_EVENT_IOT_CONNECTION_FAILED:
 	LOG_I(common, "==> CONNECTION FAILED\n");
 	break;
+
     default:
         LOG_W(common, "==> unhandled event(%u)", event);
         goto cleanup;
@@ -261,7 +274,9 @@ static int32_t wifi_proc_set_pmk_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_set_pmk_rsp* rsp = (struct mt7697_set_pmk_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_pmk_rsp* rsp = (struct mt7697_set_pmk_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                          QUEUE_MSG_HI_PRIORITY,
+                                                                                          LEN32_ALIGNED(sizeof(struct mt7697_set_pmk_rsp)));
     if (!rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -307,6 +322,14 @@ static int32_t wifi_proc_set_pmk_req(uint8_t channel, uint16_t len)
 	goto cleanup;
     }
 
+    ret = wifi_config_get_security_mode(port, &wifi_info.auth_mode, &wifi_info.encrypt_type);
+    if (ret < 0) {
+	LOG_W(common, "wifi_config_get_security_mode() failed(%d)", ret);
+	goto cleanup;
+    }
+
+    LOG_I(common, "auth mode(%u) encrypt type(%u)", wifi_info.auth_mode, wifi_info.encrypt_type);
+
 cleanup:
     if (rsp) {
         rsp->result = ret;
@@ -328,7 +351,9 @@ static int32_t wifi_proc_set_channel_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_set_channel_rsp* rsp = (struct mt7697_set_channel_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_channel_rsp* rsp = (struct mt7697_set_channel_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                  QUEUE_MSG_HI_PRIORITY,
+                                                                                                  LEN32_ALIGNED(sizeof(struct mt7697_set_channel_rsp)));
     if (!rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -401,7 +426,9 @@ static int32_t wifi_proc_set_bssid_req(uint8_t channel, uint16_t len)
     size_t words_read;
     int32_t ret = 0;
 
-    struct mt7697_set_bssid_rsp* rsp = (struct mt7697_set_bssid_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_bssid_rsp* rsp = (struct mt7697_set_bssid_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                              QUEUE_MSG_HI_PRIORITY,
+                                                                                              LEN32_ALIGNED(sizeof(struct mt7697_set_bssid_rsp)));
     if (!rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -455,7 +482,9 @@ static int32_t wifi_proc_set_ssid_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_set_ssid_rsp* rsp = (struct mt7697_set_ssid_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_ssid_rsp* rsp = (struct mt7697_set_ssid_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                            QUEUE_MSG_HI_PRIORITY,
+                                                                                            LEN32_ALIGNED(sizeof(struct mt7697_set_ssid_rsp)));
     if (!rsp) {
 	LOG_W(common, "MT7697_S2M_QUEUE() failed");
         ret = -1;
@@ -535,7 +564,9 @@ static int32_t wifi_proc_reload_settings_req(uint8_t channel, uint16_t len)
     uint32_t if_idx;
     int32_t ret = 0;
 
-    struct mt7697_reload_settings_rsp* rsp = (struct mt7697_reload_settings_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_reload_settings_rsp* rsp = (struct mt7697_reload_settings_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                          QUEUE_MSG_HI_PRIORITY,
+                                                                                                          LEN32_ALIGNED(sizeof(struct mt7697_reload_settings_rsp)));
     if (!rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -583,7 +614,9 @@ static int32_t wifi_proc_mac_addr_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_mac_addr_rsp* mac_addr_rsp = (struct mt7697_mac_addr_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_mac_addr_rsp* mac_addr_rsp = (struct mt7697_mac_addr_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                     QUEUE_MSG_HI_PRIORITY,
+                                                                                                     LEN32_ALIGNED(sizeof(struct mt7697_mac_addr_rsp)));
     if (!mac_addr_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -644,7 +677,9 @@ static int32_t wifi_proc_get_wireless_mode_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_get_wireless_mode_rsp* wireless_mode_rsp = (struct mt7697_get_wireless_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_get_wireless_mode_rsp* wireless_mode_rsp = (struct mt7697_get_wireless_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                            QUEUE_MSG_HI_PRIORITY,
+                                                                                                                            LEN32_ALIGNED(sizeof(struct mt7697_get_wireless_mode_rsp)));
     if (!wireless_mode_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -705,7 +740,9 @@ static int32_t wifi_proc_set_wireless_mode_req(uint8_t channel, uint16_t len)
     uint32_t mode;
     int32_t ret = 0;
 
-    struct mt7697_set_wireless_mode_rsp* wireless_mode_rsp = (struct mt7697_set_wireless_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_wireless_mode_rsp* wireless_mode_rsp = (struct mt7697_set_wireless_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                            QUEUE_MSG_HI_PRIORITY,
+                                                                                                                            LEN32_ALIGNED(sizeof(struct mt7697_set_wireless_mode_rsp)));
     if (!wireless_mode_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -768,7 +805,9 @@ static int32_t wifi_proc_get_cfg_req(uint8_t channel, uint16_t len)
 {
     int32_t ret = 0;
 
-    struct mt7697_cfg_rsp* cfg_rsp = (struct mt7697_cfg_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_cfg_rsp* cfg_rsp = (struct mt7697_cfg_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                      QUEUE_MSG_HI_PRIORITY,
+                                                                                      LEN32_ALIGNED(sizeof(struct mt7697_cfg_rsp)));
     if (!cfg_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -880,7 +919,9 @@ static int32_t wifi_proc_set_opmode_req(uint8_t channel, uint16_t len)
     uint32_t opmode;
     int32_t ret = 0;
 
-    struct mt7697_set_op_mode_rsp* op_mode_rsp = (struct mt7697_set_op_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_op_mode_rsp* op_mode_rsp = (struct mt7697_set_op_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                          QUEUE_MSG_HI_PRIORITY,
+                                                                                                          LEN32_ALIGNED(sizeof(struct mt7697_set_op_mode_req)));
     if (!op_mode_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -911,7 +952,15 @@ static int32_t wifi_proc_set_opmode_req(uint8_t channel, uint16_t len)
 	LOG_W(common, "wifi_config_set_opmode() failed(%d)", ret);
 	goto cleanup; 
     }
+/*
+    wifi_info.netif = netif_find_by_type((opmode == WIFI_MODE_STA_ONLY) ? NETIF_TYPE_STA : NETIF_TYPE_AP);
+    if (!wifi_info.netif) {
+        LOG_E(common, "netif_find_by_type() failed(%d)", ret);
+        goto cleanup;
+    }
 
+    netif_set_default(wifi_info.netif);
+*/
     char buf[WIFI_PROFILE_BUFFER_LENGTH] = {0};
     sprintf(buf, "%lu", opmode);
     nvdm_write_data_item("common", "OpMode", NVDM_DATA_ITEM_TYPE_STRING, (uint8_t *)buf, strlen(buf));
@@ -935,7 +984,9 @@ static int32_t wifi_proc_get_radio_state_req(uint8_t channel, uint16_t len)
     int32_t ret = 0;
     uint8_t opmode;
 
-    struct mt7697_get_radio_state_rsp* radio_state_rsp = (struct mt7697_get_radio_state_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_get_radio_state_rsp* radio_state_rsp = (struct mt7697_get_radio_state_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                      QUEUE_MSG_HI_PRIORITY,
+                                                                                                                      LEN32_ALIGNED(sizeof(struct mt7697_get_radio_state_rsp)));
     if (!radio_state_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -992,7 +1043,9 @@ static int32_t wifi_proc_set_radio_state_req(uint8_t channel, uint16_t len)
     int32_t ret = 0;
     uint8_t opmode;
 
-    struct mt7697_set_radio_state_rsp* radio_state_rsp = (struct mt7697_set_radio_state_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_radio_state_rsp* radio_state_rsp = (struct mt7697_set_radio_state_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                      QUEUE_MSG_HI_PRIORITY,
+                                                                                                                      LEN32_ALIGNED(sizeof(struct mt7697_set_radio_state_rsp)));
     if (!radio_state_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -1056,7 +1109,9 @@ static int32_t wifi_proc_get_listen_interval_req(uint8_t channel, uint16_t len)
     int32_t ret = 0;
     uint8_t listen_interval;
 
-    struct mt7697_get_listen_interval_rsp* listen_interval_rsp = (struct mt7697_get_listen_interval_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_get_listen_interval_rsp* listen_interval_rsp = (struct mt7697_get_listen_interval_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                                  QUEUE_MSG_HI_PRIORITY,
+                                                                                                                                  LEN32_ALIGNED(sizeof(struct mt7697_get_listen_interval_rsp)));
     if (!listen_interval_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -1102,7 +1157,9 @@ static int32_t wifi_proc_set_listen_interval_req(uint8_t channel, uint16_t len)
     uint32_t interval = 0;
     int32_t ret = 0;
 
-    struct mt7697_set_listen_interval_rsp* listen_interval_rsp = (struct mt7697_set_listen_interval_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_listen_interval_rsp* listen_interval_rsp = (struct mt7697_set_listen_interval_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                                  QUEUE_MSG_HI_PRIORITY,
+                                                                                                                                  LEN32_ALIGNED(sizeof(struct mt7697_set_listen_interval_rsp)));
     if (!listen_interval_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -1155,7 +1212,9 @@ static int32_t wifi_proc_get_security_mode_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_get_security_mode_rsp* security_mode_rsp = (struct mt7697_get_security_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_get_security_mode_rsp* security_mode_rsp = (struct mt7697_get_security_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                            QUEUE_MSG_HI_PRIORITY,
+                                                                                                                            LEN32_ALIGNED(sizeof(struct mt7697_get_security_mode_rsp)));
     if (!security_mode_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -1219,7 +1278,9 @@ static int32_t wifi_proc_set_security_mode_req(uint8_t channel, uint16_t len)
     uint32_t encrypt_type;
     int32_t ret = 0;
 
-    struct mt7697_set_security_mode_rsp* security_mode_rsp = (struct mt7697_set_security_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_set_security_mode_rsp* security_mode_rsp = (struct mt7697_set_security_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                                            QUEUE_MSG_HI_PRIORITY,
+                                                                                                                            LEN32_ALIGNED(sizeof(struct mt7697_set_security_mode_rsp)));
     if (!security_mode_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -1291,7 +1352,9 @@ static int32_t wifi_proc_scan_req(uint8_t channel, uint16_t len)
     struct mt7697_scan_req scan_req;
     int32_t ret = 0;
 
-    struct mt7697_scan_rsp* scan_rsp = (struct mt7697_scan_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_scan_rsp* scan_rsp = (struct mt7697_scan_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                         QUEUE_MSG_HI_PRIORITY,
+                                                                                         LEN32_ALIGNED(sizeof(struct mt7697_scan_rsp)));
     if (!scan_rsp) {
 	LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -1346,7 +1409,9 @@ static int32_t wifi_proc_scan_stop_req(uint8_t channel, uint16_t len)
 {
     int32_t ret = 0;
 
-    struct mt7697_scan_stop_rsp* scan_stop_rsp = (struct mt7697_scan_stop_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_scan_stop_rsp* scan_stop_rsp = (struct mt7697_scan_stop_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                        QUEUE_MSG_HI_PRIORITY,
+                                                                                                        LEN32_ALIGNED(sizeof(struct mt7697_scan_stop_rsp)));
     if (!scan_stop_rsp) {
         LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -1392,7 +1457,9 @@ static int32_t wifi_proc_disconnect_req(uint8_t channel, uint16_t len)
     uint32_t port;
     int32_t ret = 0;
 
-    struct mt7697_disconnect_rsp* disconnect_rsp = (struct mt7697_disconnect_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, QUEUE_MSG_HI_PRIORITY);
+    struct mt7697_disconnect_rsp* disconnect_rsp = (struct mt7697_disconnect_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
+                                                                                                           QUEUE_MSG_HI_PRIORITY,
+                                                                                                           LEN32_ALIGNED(sizeof(struct mt7697_disconnect_rsp)));
     if (!disconnect_rsp) {
         LOG_W(common, "spi_queue_pool_alloc_msg() failed");
         ret = -1;
@@ -1482,7 +1549,7 @@ static int32_t wifi_proc_tx_raw_req(uint8_t channel, uint16_t len)
         goto cleanup;
     }
 
-//    LOG_I(common, "Tx len(%d)", tx_len);
+    LOG_I(common, "Tx len(%d) encrypt disabled(%u)", tx_len, (wifi_info.encrypt_type == WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED));
     if (!tx_len || tx_len > sizeof(wifi_info.tx_data)) {
 	LOG_W(common, "invalid Tx len(%d)", tx_len);
 	ret = -1;
@@ -1490,10 +1557,19 @@ static int32_t wifi_proc_tx_raw_req(uint8_t channel, uint16_t len)
     }
 
 //    LOG_HEXDUMP_I(common, "Tx packet", wifi_info.tx_data, tx_len);
-    ret = wifi_connection_send_raw_packet(wifi_info.tx_data, tx_len);
-    if (ret < 0) {
-	LOG_W(common, "wifi_connection_send_raw_packet() failed(%d)", ret);
-	goto cleanup;
+    if (wifi_info.encrypt_type == WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED) {
+	ret = wifi_connection_send_raw_packet(wifi_info.tx_data, tx_len);
+        if (ret < 0) {
+	    LOG_W(common, "wifi_connection_send_raw_packet() failed(%d)", ret);
+	    goto cleanup;
+        }
+    }
+    else {
+/*        ret = wifi_raw_pkt_sender(wifi_info.tx_data, tx_len, wifi_info.netif);
+        if (ret < 0) {
+	    LOG_W(common, "wifi_raw_pkt_sender() failed(%d)", ret);
+	    goto cleanup;
+        }*/
     }
 
     ret = 0;
@@ -1504,8 +1580,28 @@ cleanup:
 
 int32_t wifi_init_done_handler(wifi_event_t event, uint8_t *payload, uint32_t length)
 {
+    int ret;
+    uint8_t opmode;
+
     LOG_I(common, "WiFi Init Done: port(%d)", payload[6]);
-    return 0;
+
+    ret = wifi_config_get_opmode(&opmode);
+    if (ret < 0) {
+	LOG_W(common, "wifi_config_get_opmode() failed(%d)", ret);
+	goto cleanup;
+    }
+    LOG_I(common, "opmode(%u)", opmode);
+/*
+    wifi_info.netif = netif_find_by_type((opmode == WIFI_MODE_STA_ONLY) ? NETIF_TYPE_STA : NETIF_TYPE_AP);
+    if (!wifi_info.netif) {
+        LOG_E(common, "netif_find_by_type() failed(%d)", ret);
+        goto cleanup;
+    }
+
+    netif_set_default(wifi_info.netif);
+*/
+cleanup:
+    return ret;
 }
 
 int32_t wifi_proc_cmd(uint8_t channel, uint16_t len, uint8_t type)

@@ -242,6 +242,9 @@ struct mt7697_rx_raw_packet {
 
 struct mt7697_wifi_info {
 	uint8_t				tx_data[LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
+	wifi_auth_mode_t 		auth_mode;
+    	wifi_encrypt_type_t 		encrypt_type;
+//	struct netif			*netif;
   	uint16_t			if_idx;
 	uint8_t 			channel;
 } __attribute__((aligned(4)));
