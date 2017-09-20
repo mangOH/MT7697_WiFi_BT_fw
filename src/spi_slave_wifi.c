@@ -36,7 +36,7 @@ static int32_t wifi_net_rx_hndlr(struct pbuf* buf, struct netif* netif)
     int32_t ret = 0;
 
 //    LOG_I(common, "netif(%u) len(%u)", netif->num, buf->tot_len);
-//    LOG_HEXDUMP_I(common, "Rx data ", buf->payload, buf->tot_len);
+    LOG_HEXDUMP_I(common, "Rx data ", buf->payload, buf->tot_len);
 
     rx_req = (struct mt7697_rx_raw_packet*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
                                                                     QUEUE_MSG_LO_PRIORITY, 
@@ -53,7 +53,7 @@ static int32_t wifi_net_rx_hndlr(struct pbuf* buf, struct netif* netif)
     rx_req->hdr.result = buf->tot_len;
     memcpy(rx_req->data, buf->payload, buf->tot_len);
 
-    LOG_I(common, "<-- Rx DATA len(%u)", rx_req->hdr.cmd.len);
+    printf("<-- Rx(%u)\n", rx_req->hdr.cmd.len);
     ret = spi_queue_send_req_from_isr(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)rx_req);
     if (ret < 0) {
         LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
@@ -171,7 +171,7 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
     case WIFI_EVENT_IOT_PORT_SECURE:
     {
 	LOG_I(common, "==> PORT SECURE\n");
-//	if (wifi_info.netif) netif_set_link_up(wifi_info.netif);
+	if (wifi_info.netif) netif_set_link_up(wifi_info.netif);
 
         struct mt7697_connect_ind* connect_ind = (struct mt7697_connect_ind*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
                                                                                                       QUEUE_MSG_HI_PRIORITY, 
@@ -214,7 +214,7 @@ static int32_t wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32_t l
 	uint8_t zero_bssid[WIFI_MAC_ADDRESS_LENGTH] = {0};
 
         LOG_I(common, "==> DISCONNECTED\n");
-//	if (wifi_info.netif) netif_set_link_down(wifi_info.netif);
+	if (wifi_info.netif) netif_set_link_down(wifi_info.netif);
 
 	LOG_HEXDUMP_I(common, "MAC", payload, length);
         if ((length < WIFI_MAC_ADDRESS_LENGTH) || !memcmp(payload, zero_bssid, WIFI_MAC_ADDRESS_LENGTH)) {
@@ -269,6 +269,7 @@ cleanup:
 
 static int32_t wifi_proc_set_pmk_req(uint8_t channel, uint16_t len)
 {
+    uint8_t empty_pmk[WIFI_LENGTH_PMK] = {0};
     uint8_t pmk[WIFI_LENGTH_PMK] = {0};
     size_t words_read;
     uint32_t port;
@@ -316,19 +317,20 @@ static int32_t wifi_proc_set_pmk_req(uint8_t channel, uint16_t len)
 	goto cleanup;
     }
 
-    ret = wifi_config_set_pmk(port, pmk);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_set_pmk() failed(%d)", ret);
-	goto cleanup;
+    if (memcmp(pmk, empty_pmk, WIFI_LENGTH_PMK)) {
+    	ret = wifi_config_set_pmk(port, pmk);
+    	if (ret < 0) {
+	    LOG_W(common, "wifi_config_set_pmk() failed(%d)", ret);
+	    goto cleanup;
+        }
     }
-
-    ret = wifi_config_get_security_mode(port, &wifi_info.auth_mode, &wifi_info.encrypt_type);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_get_security_mode() failed(%d)", ret);
-	goto cleanup;
+    else {
+	ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_OPEN, WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED);
+        if (ret < 0) {
+	    LOG_W(common, "wifi_config_get_security_mode() failed(%d)", ret);
+	    goto cleanup;
+        }
     }
-
-    LOG_I(common, "auth mode(%u) encrypt type(%u)", wifi_info.auth_mode, wifi_info.encrypt_type);
 
 cleanup:
     if (rsp) {
@@ -952,7 +954,7 @@ static int32_t wifi_proc_set_opmode_req(uint8_t channel, uint16_t len)
 	LOG_W(common, "wifi_config_set_opmode() failed(%d)", ret);
 	goto cleanup; 
     }
-/*
+
     wifi_info.netif = netif_find_by_type((opmode == WIFI_MODE_STA_ONLY) ? NETIF_TYPE_STA : NETIF_TYPE_AP);
     if (!wifi_info.netif) {
         LOG_E(common, "netif_find_by_type() failed(%d)", ret);
@@ -960,7 +962,7 @@ static int32_t wifi_proc_set_opmode_req(uint8_t channel, uint16_t len)
     }
 
     netif_set_default(wifi_info.netif);
-*/
+
     char buf[WIFI_PROFILE_BUFFER_LENGTH] = {0};
     sprintf(buf, "%lu", opmode);
     nvdm_write_data_item("common", "OpMode", NVDM_DATA_ITEM_TYPE_STRING, (uint8_t *)buf, strlen(buf));
@@ -1534,7 +1536,7 @@ static int32_t wifi_proc_tx_raw_req(uint8_t channel, uint16_t len)
     uint32_t tx_len;
     int32_t ret = 0;
 
-    LOG_I(common, "--> TX RAW PKT(%d)", len);
+//    LOG_I(common, "--> TX(%d)", len);
     size_t words_read = spi_queue_read(channel, &tx_len, LEN_TO_WORD(sizeof(tx_len)));
     if (words_read != LEN_TO_WORD(sizeof(tx_len))) {
 	LOG_W(common, "spi_queue_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(tx_len)));
@@ -1549,27 +1551,18 @@ static int32_t wifi_proc_tx_raw_req(uint8_t channel, uint16_t len)
         goto cleanup;
     }
 
-    LOG_I(common, "Tx len(%d) encrypt disabled(%u)", tx_len, (wifi_info.encrypt_type == WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED));
+    printf("--> Tx(%d)\n", tx_len);
     if (!tx_len || tx_len > sizeof(wifi_info.tx_data)) {
 	LOG_W(common, "invalid Tx len(%d)", tx_len);
 	ret = -1;
 	goto cleanup;
     }
 
-//    LOG_HEXDUMP_I(common, "Tx packet", wifi_info.tx_data, tx_len);
-    if (wifi_info.encrypt_type == WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED) {
-	ret = wifi_connection_send_raw_packet(wifi_info.tx_data, tx_len);
-        if (ret < 0) {
-	    LOG_W(common, "wifi_connection_send_raw_packet() failed(%d)", ret);
-	    goto cleanup;
-        }
-    }
-    else {
-/*        ret = wifi_raw_pkt_sender(wifi_info.tx_data, tx_len, wifi_info.netif);
-        if (ret < 0) {
-	    LOG_W(common, "wifi_raw_pkt_sender() failed(%d)", ret);
-	    goto cleanup;
-        }*/
+    LOG_HEXDUMP_I(common, "Tx packet", wifi_info.tx_data, tx_len);
+    ret = ethernet_raw_pkt_sender(wifi_info.tx_data, tx_len, wifi_info.netif);
+    if (ret < 0) {
+	LOG_W(common, "ethernet_raw_pkt_sender() failed(%d)", ret);
+	goto cleanup;
     }
 
     ret = 0;
@@ -1591,7 +1584,7 @@ int32_t wifi_init_done_handler(wifi_event_t event, uint8_t *payload, uint32_t le
 	goto cleanup;
     }
     LOG_I(common, "opmode(%u)", opmode);
-/*
+
     wifi_info.netif = netif_find_by_type((opmode == WIFI_MODE_STA_ONLY) ? NETIF_TYPE_STA : NETIF_TYPE_AP);
     if (!wifi_info.netif) {
         LOG_E(common, "netif_find_by_type() failed(%d)", ret);
@@ -1599,7 +1592,7 @@ int32_t wifi_init_done_handler(wifi_event_t event, uint8_t *payload, uint32_t le
     }
 
     netif_set_default(wifi_info.netif);
-*/
+
 cleanup:
     return ret;
 }
