@@ -36,7 +36,7 @@ static int32_t wifi_net_rx_hndlr(struct pbuf* buf, struct netif* netif)
     int32_t ret = 0;
 
 //    LOG_I(common, "netif(%u) len(%u)", netif->num, buf->tot_len);
-    LOG_HEXDUMP_I(common, "Rx data ", buf->payload, buf->tot_len);
+//    LOG_HEXDUMP_I(common, "Rx data ", buf->payload, buf->tot_len);
 
     rx_req = (struct mt7697_rx_raw_packet*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
                                                                     QUEUE_MSG_LO_PRIORITY, 
@@ -1558,7 +1558,7 @@ static int32_t wifi_proc_tx_raw_req(uint8_t channel, uint16_t len)
 	goto cleanup;
     }
 
-    LOG_HEXDUMP_I(common, "Tx packet", wifi_info.tx_data, tx_len);
+//    LOG_HEXDUMP_I(common, "Tx packet", wifi_info.tx_data, tx_len);
     ret = ethernet_raw_pkt_sender(wifi_info.tx_data, tx_len, wifi_info.netif);
     if (ret < 0) {
 	LOG_W(common, "ethernet_raw_pkt_sender() failed(%d)", ret);

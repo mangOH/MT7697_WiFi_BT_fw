@@ -149,6 +149,7 @@ struct QueueTask {
 };
 
 struct QueueMemPool {
+    SemaphoreHandle_t		lock;
     uint8_t*                    start;
     uint8_t*                    end;
     uint8_t*			alloc_ptr;

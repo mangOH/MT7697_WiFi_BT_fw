@@ -149,7 +149,14 @@ static int32_t spi_queue_init_msg_pool(uint8_t ch, uint32_t len)
             LOG_W(common, "malloc() failed");
             ret = -1;
 	    goto cleanup;
-        }      
+        }
+
+	queueMain.info[ch].msg_pool.lock = xSemaphoreCreateMutex();
+	if (!queueMain.info[ch].msg_pool.lock) {
+	    LOG_W(common, "xSemaphoreCreateMutex(%d) failed", ch);
+	    ret = -1;
+	    goto cleanup;
+	}        
     }
 
     queueMain.info[ch].msg_pool.end = queueMain.info[ch].msg_pool.start + QUEUE_MSG_POOL_LEN * len;
@@ -167,7 +174,14 @@ static int32_t spi_queue_init_msg_pool(uint8_t ch, uint32_t len)
             LOG_W(common, "malloc() failed");
             ret = -1;
 	    goto cleanup;
-        }      
+        }
+
+	queueMain.info[ch].hi_msg_pool.lock = xSemaphoreCreateMutex();
+	if (!queueMain.info[ch].hi_msg_pool.lock) {
+	    LOG_W(common, "xSemaphoreCreateMutex(%d) failed", ch);
+	    ret = -1;
+	    goto cleanup;
+	}      
     }
 
     queueMain.info[ch].hi_msg_pool.end = queueMain.info[ch].hi_msg_pool.start + QUEUE_MSG_POOL_HI_LEN * len;
@@ -185,12 +199,28 @@ static void spi_queue_pool_free_msg(uint8_t ch, uint8_t* ptr)
 {
     struct QueueMemPool* msg_pool = ((ptr >= queueMain.info[ch].msg_pool.start) && 
 				     (ptr < queueMain.info[ch].msg_pool.end)) ? &queueMain.info[ch].msg_pool : &queueMain.info[ch].hi_msg_pool;
+    int ret = 0;
+
+    if (xSemaphoreTake(msg_pool->lock, portMAX_DELAY) != pdTRUE) {
+	LOG_E(common, "xSemaphoreTake() failed");
+	ret = -1;
+        goto cleanup;
+    }
 
     configASSERT(msg_pool->free_ptr != NULL);
     configASSERT(ptr >= msg_pool->start);
     configASSERT(ptr < msg_pool->end);
 //    LOG_I(common, "ptr(%p)", ptr);
     msg_pool->free_ptr = ptr;
+
+    if (xSemaphoreGive(msg_pool->lock) != pdTRUE) {
+	LOG_E(common, "xSemaphoreGive() failed");
+	ret = -1;
+        goto cleanup;
+    }
+
+cleanup:
+    return ret;
 }
 
 static int32_t proc_queue_init_cmd(uint8_t channel)
@@ -323,11 +353,11 @@ static int32_t proc_queue_reset_cmd(uint8_t channel)
     qsS2M->read_offset = 0;
     qsS2M->write_offset = 0;;
 
-    ret = spi_queue_init_msg_pool(s2m_ch, MT7697_IEEE80211_FRAME_LEN);
-    if (ret < 0) {
-        LOG_W(common, "spi_queue_init_msg_pool() failed(%d)", ret);
-	goto cleanup;
-    }
+    queueMain.info[s2m_ch].msg_pool.alloc_ptr = queueMain.info[s2m_ch].msg_pool.start;
+    queueMain.info[s2m_ch].msg_pool.free_ptr = queueMain.info[s2m_ch].msg_pool.end;
+
+    queueMain.info[s2m_ch].hi_msg_pool.alloc_ptr = queueMain.info[s2m_ch].hi_msg_pool.start;
+    queueMain.info[s2m_ch].hi_msg_pool.free_ptr = queueMain.info[s2m_ch].hi_msg_pool.end;
 
     if (xQueueReset(queueMain.info[s2m_ch].sendQ) != pdPASS) {
 	LOG_W(common, "xQueueReset() failed");
@@ -590,6 +620,11 @@ uint8_t* spi_queue_pool_alloc_msg(uint8_t ch, uint8_t priority, uint16_t len)
     uint8_t* ret = NULL;
 
     if (msg_pool->start != NULL) {
+	if (xSemaphoreTake(msg_pool->lock, portMAX_DELAY) != pdTRUE) {
+	    LOG_E(common, "xSemaphoreTake() failed");
+            goto cleanup;
+        }
+
 	configASSERT(msg_pool->end);
 	configASSERT(msg_pool->alloc_ptr);
 	configASSERT(msg_pool->free_ptr);
@@ -610,11 +645,17 @@ uint8_t* spi_queue_pool_alloc_msg(uint8_t ch, uint8_t priority, uint16_t len)
 	else {
 	    LOG_W(common, "q(%d) msg dropped", ch);
 	}
+
+	if (xSemaphoreGive(msg_pool->lock) != pdTRUE) {
+	    LOG_E(common, "xSemaphoreGive() failed");
+            goto cleanup;
+        }
     }
     else {
         LOG_W(common, "q(%d) no msg pool", ch);
     }
 
+cleanup:
     return ret;
 }
 
