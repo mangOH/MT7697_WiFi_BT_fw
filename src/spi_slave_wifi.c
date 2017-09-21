@@ -53,7 +53,7 @@ static int32_t wifi_net_rx_hndlr(struct pbuf* buf, struct netif* netif)
     rx_req->hdr.result = buf->tot_len;
     memcpy(rx_req->data, buf->payload, buf->tot_len);
 
-    printf("<-- Rx(%u)\n", rx_req->hdr.cmd.len);
+//    printf("<-- Rx(%u)\n", rx_req->hdr.cmd.len);
     ret = spi_queue_send_req_from_isr(MT7697_S2M_QUEUE, (struct mt7697_rsp_hdr*)rx_req);
     if (ret < 0) {
         LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
@@ -1551,7 +1551,7 @@ static int32_t wifi_proc_tx_raw_req(uint8_t channel, uint16_t len)
         goto cleanup;
     }
 
-    printf("--> Tx(%d)\n", tx_len);
+//    printf("--> Tx(%d)\n", tx_len);
     if (!tx_len || tx_len > sizeof(wifi_info.tx_data)) {
 	LOG_W(common, "invalid Tx len(%d)", tx_len);
 	ret = -1;

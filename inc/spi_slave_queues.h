@@ -78,10 +78,10 @@
 #define QUEUE_TASK_STACK_SIZE		4096
 #define QUEUE_MSG_LO_PRIORITY		0
 #define QUEUE_MSG_HI_PRIORITY		1
-#define QUEUE_MSG_POOL_LEN		32
-#define QUEUE_MSG_POOL_HI_LEN		4
+#define QUEUE_MSG_POOL_LEN		34
+#define QUEUE_MSG_POOL_HI_LEN		2
 #define QUEUE_SENDQ_LEN			64
-#define QUEUE_WORD_SIZE			2048
+#define QUEUE_WORD_SIZE			4096
 
 #define mt7697_queue_init_rsp		mt7697_rsp_hdr
 #define mt7697_queue_reset_rsp		mt7697_rsp_hdr

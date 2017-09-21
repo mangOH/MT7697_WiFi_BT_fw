@@ -629,7 +629,7 @@ uint8_t* spi_queue_pool_alloc_msg(uint8_t ch, uint8_t priority, uint16_t len)
 	configASSERT(msg_pool->alloc_ptr);
 	configASSERT(msg_pool->free_ptr);
 
-        if ((msg_pool->alloc_ptr + len) > msg_pool->end)
+        if ((msg_pool->alloc_ptr + len) >= msg_pool->end)
 	    msg_pool->alloc_ptr = msg_pool->start;
 
 //	LOG_I(common, "alloc(%u: %p -> %p) free(%p) start/end(%p/%p)", 
