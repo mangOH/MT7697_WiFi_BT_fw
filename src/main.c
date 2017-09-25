@@ -128,6 +128,7 @@ int main(void)
     wifi_config_t config = {0};
     wifi_config_ext_t config_ext = {0};
 
+    wifi_config.opmode = WIFI_MODE_STA_ONLY;
     LOG_I(common, "OP MODE('%s')", (wifi_config.opmode == WIFI_MODE_STA_ONLY) ? "STA":"AP");
     config.opmode = wifi_config.opmode;
 

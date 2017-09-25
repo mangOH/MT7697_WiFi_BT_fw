@@ -8,7 +8,6 @@
 #include <FreeRTOS.h>
 #include <task.h>
 
-#include "nvdm.h"
 #include "lwip/netif.h"
 #include "ethernetif.h"
 
@@ -962,10 +961,6 @@ static int32_t wifi_proc_set_opmode_req(uint8_t channel, uint16_t len)
     }
 
     netif_set_default(wifi_info.netif);
-
-    char buf[WIFI_PROFILE_BUFFER_LENGTH] = {0};
-    sprintf(buf, "%lu", opmode);
-    nvdm_write_data_item("common", "OpMode", NVDM_DATA_ITEM_TYPE_STRING, (uint8_t *)buf, strlen(buf));
 
 cleanup:
     if (op_mode_rsp) {
