@@ -142,8 +142,6 @@ int main(void)
     config_ext.sta_auto_connect_present = 1;
     config_ext.sta_auto_connect = 1;
 
-    memcpy(config.ap_config.ssid, wifi_config.ap_ssid, 32);
-    config.ap_config.ssid_length = wifi_config.ap_ssid_len;
     memcpy(config.ap_config.password, wifi_config.ap_wpa_psk, 64);
     config.ap_config.password_length = wifi_config.ap_wpa_psk_len;
     config.ap_config.auth_mode = (wifi_auth_mode_t)wifi_config.ap_auth_mode;

@@ -919,6 +919,7 @@ static int32_t wifi_proc_set_opmode_req(uint8_t channel, uint16_t len)
 {
     uint32_t opmode;
     int32_t ret = 0;
+    uint8_t curr_opmode;
 
     struct mt7697_set_op_mode_rsp* op_mode_rsp = (struct mt7697_set_op_mode_rsp*)spi_queue_pool_alloc_msg(MT7697_S2M_QUEUE, 
                                                                                                           QUEUE_MSG_HI_PRIORITY,
@@ -947,11 +948,20 @@ static int32_t wifi_proc_set_opmode_req(uint8_t channel, uint16_t len)
 	goto cleanup;
     }
 
-    LOG_I(common, "set opmode(%u)", opmode);
-    ret = wifi_config_set_opmode(opmode);
+    ret = wifi_config_get_opmode(&curr_opmode);
     if (ret < 0) {
-	LOG_W(common, "wifi_config_set_opmode() failed(%d)", ret);
-	goto cleanup; 
+	LOG_W(common, "wifi_config_get_opmode() failed(%d)", ret);
+	goto cleanup;
+    }
+    LOG_I(common, "opmode(%u)", curr_opmode);
+    
+    if (curr_opmode != opmode) {
+        LOG_I(common, "set opmode(%u)", opmode);
+        ret = wifi_config_set_opmode(opmode);
+        if (ret < 0) {
+	    LOG_W(common, "wifi_config_set_opmode() failed(%d)", ret);
+	    goto cleanup; 
+        }
     }
 
     wifi_info.netif = netif_find_by_type((opmode == WIFI_MODE_STA_ONLY) ? NETIF_TYPE_STA : NETIF_TYPE_AP);
@@ -1768,6 +1778,7 @@ int32_t wifi_proc_cmd(uint8_t channel, uint16_t len, uint8_t type)
 
 int32_t wifi_init_evt_hndlrs(void)
 {
+    
     int32_t ret = 0;
 
     ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_REPORT_BEACON_PROBE_RESPONSE, wifi_event_hndlr);
