@@ -780,6 +780,7 @@ size_t spi_queue_read(uint8_t channel, uint32_t* buffer, size_t num_words)
     uint16_t write_offset;
     uint16_t read_offset;
     size_t words_read = 0;
+    int32_t err;
 
     if (xSemaphoreTake(queueMain.info[channel].lock, portMAX_DELAY) != pdTRUE) {
 	LOG_E(common, "xSemaphoreTake() failed");
@@ -821,6 +822,16 @@ size_t spi_queue_read(uint8_t channel, uint32_t* buffer, size_t num_words)
     }
 
     qs->read_offset = read_offset;
+
+    if (words_read > 0) {
+        _set_slave_to_master_mailbox(1 << channel);
+        err = _notify_spi_master();
+	if (err < 0) {
+	    LOG_E(common, "_notify_spi_master() failed(%d)", err);
+	    words_read = err;
+	    goto cleanup;
+	}
+    }
 
 cleanup:
 //    LOG_I(common, "q(%d) words read/offset(%d/%u)", channel, words_read, read_offset);
