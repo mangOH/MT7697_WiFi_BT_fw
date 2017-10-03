@@ -195,7 +195,7 @@ cleanup:
     return ret;
 }
 
-static void spi_queue_pool_free_msg(uint8_t ch, uint8_t* ptr)
+static int32_t spi_queue_pool_free_msg(uint8_t ch, uint8_t* ptr)
 {
     struct QueueMemPool* msg_pool = ((ptr >= queueMain.info[ch].msg_pool.start) && 
 				     (ptr < queueMain.info[ch].msg_pool.end)) ? &queueMain.info[ch].msg_pool : &queueMain.info[ch].hi_msg_pool;
@@ -441,7 +441,7 @@ static size_t spi_queue_write(uint8_t channel, const uint32_t* buffer, size_t nu
     }
 
     if (spi_queue_get_num_free_words(channel) < num_words) {
-	LOG_W(common, "no space free(%u) < req(%u)", spi_queue_get_num_free_words(channel), num_words);
+//	LOG_W(common, "no space free(%u) < req(%u)", spi_queue_get_num_free_words(channel), num_words);
 	goto cleanup;
     }
 
@@ -515,14 +515,29 @@ static void spi_queue_s2m_task(void *pvParameters)
 
     while (1) {
 	struct mt7697_rsp_hdr* req;
-	if (xQueueReceive(queueMain.info[channel].sendQ, &req, portMAX_DELAY)) {
+	if (xQueuePeek(queueMain.info[channel].sendQ, &req, portMAX_DELAY)) {
 //            LOG_I(common, "<-- q(%u) CMD(%u) len(%u)", channel, req->cmd.type, req->cmd.len);
     	    size_t bWrite = spi_queue_write(channel, (const uint32_t*)req, LEN_TO_WORD(LEN32_ALIGNED(req->cmd.len)));
     	    if (bWrite != LEN_TO_WORD(LEN32_ALIGNED(req->cmd.len))) {
-		LOG_W(common, "spi_queue_write() failed(%d != %d)", bWrite, LEN_TO_WORD(LEN32_ALIGNED(req->cmd.len)));
-    	    }
+//		LOG_W(common, "channel(%u) blocked writer", channel);
+		EventBits_t uxBits = xEventGroupSetBits(queueMain.info[channel].evtGrp, QUEUE_BLOCKED_WRITER);
+		configASSERT(uxBits & QUEUE_BLOCKED_WRITER);
 
-	    spi_queue_pool_free_msg(channel, (uint8_t*)req);
+		uxBits = xEventGroupWaitBits(queueMain.info[channel].evtGrp, QUEUE_UNBLOCK_WRITER, pdTRUE, pdTRUE, portMAX_DELAY);
+		configASSERT(uxBits & QUEUE_UNBLOCK_WRITER);
+
+		uxBits = xEventGroupClearBits(queueMain.info[channel].evtGrp, QUEUE_BLOCKED_WRITER);
+		configASSERT(!(uxBits & QUEUE_UNBLOCK_WRITER));
+    	    }
+	    else {
+	        int ret = spi_queue_pool_free_msg(channel, (uint8_t*)req);
+		if (ret < 0) {
+		    LOG_W(common, "spi_queue_pool_free_msg() failed(%d)", ret);
+		    break;
+		}
+
+	        configASSERT(xQueueReceive(queueMain.info[channel].sendQ, &req, 0) == pdTRUE);
+	    }
         }
     }
 
@@ -605,10 +620,29 @@ static void _spi_slave_interrupt_handler(void* data)
 //    LOG_I(common, "M2S mbox(0x%02x)", m2s_mailbox_bits);
     if (m2s_mailbox_bits) {
         for (uint16_t i = 0; i < NUM_CHANNELS; i++) {
-            if ((m2s_mailbox_bits & (1 << i)) && queueMain.info[i].task.hndl != NULL) {
-	        BaseType_t xHigherPriorityTaskWoken;
-	        vTaskNotifyGiveFromISR(queueMain.info[i].task.hndl, &xHigherPriorityTaskWoken);
-	        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+            if (m2s_mailbox_bits & (1 << i)) {
+		BaseType_t xHigherPriorityTaskWoken;
+		struct QueueSpecification* qs = _get_queue(i);
+		configASSERT(qs);
+		configASSERT(queueMain.info[i].task.hndl != NULL);
+
+		enum QueueDirection direction = BF_GET(qs->flags, FLAGS_DIRECTION_OFFSET, FLAGS_DIRECTION_WIDTH);
+		if (QUEUE_DIRECTION_M2S == direction) {
+	            vTaskNotifyGiveFromISR(queueMain.info[i].task.hndl, &xHigherPriorityTaskWoken);
+	            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+	        }
+		else if (QUEUE_DIRECTION_S2M == direction) {
+		    EventBits_t uxBits = xEventGroupGetBitsFromISR(queueMain.info[i].evtGrp);
+		    if (uxBits & QUEUE_BLOCKED_WRITER) {
+			struct mt7697_rsp_hdr* req;
+			BaseType_t ret = xQueuePeekFromISR(queueMain.info[i].sendQ, &req);
+			configASSERT(ret == pdTRUE);
+			if (spi_queue_get_num_free_words(i) >= LEN_TO_WORD(LEN32_ALIGNED(req->cmd.len))) {
+//		            LOG_I(common, "channel(%u) unblocked writer", i);
+		            uxBits = xEventGroupSetBitsFromISR(queueMain.info[i].evtGrp, QUEUE_UNBLOCK_WRITER, &xHigherPriorityTaskWoken);
+			}			
+		    }
+		}
             }
         }
     }
@@ -690,6 +724,16 @@ int32_t spi_queue_init(void)
 	queueMain.info[i].hi_msg_pool.end = NULL;
 	queueMain.info[i].hi_msg_pool.alloc_ptr = NULL;
 	queueMain.info[i].hi_msg_pool.free_ptr = NULL;
+
+	queueMain.info[i].evtGrp = xEventGroupCreate();
+	if (!queueMain.info[i].evtGrp) {
+	    LOG_W(common, "xEventGroupCreate(%d) failed", i);
+	    ret = -1;
+	    goto cleanup;
+	}
+
+	EventBits_t uxBits = xEventGroupClearBits(queueMain.info[i].evtGrp, QUEUE_BLOCKED_WRITER | QUEUE_UNBLOCK_WRITER);
+	configASSERT(!(uxBits & QUEUE_BLOCKED_WRITER) && !(uxBits & QUEUE_UNBLOCK_WRITER));
 
 	queueMain.info[i].lock = xSemaphoreCreateMutex();
 	if (!queueMain.info[i].lock) {

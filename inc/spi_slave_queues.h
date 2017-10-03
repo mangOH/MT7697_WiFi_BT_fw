@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <semphr.h>
+#include "event_groups.h"
 #include "hal_gpio.h"
 
 #define ARRAY_SIZE(_a_) (sizeof(_a_) / sizeof(_a_[0]))
@@ -71,6 +72,8 @@
 #define FLAGS_NUM_WORDS_OFFSET 		16
 #define FLAGS_NUM_WORDS_WIDTH  		16
 
+#define QUEUE_BLOCKED_WRITER		( 1 << 0 )
+#define QUEUE_UNBLOCK_WRITER		( 1 << 1 )
 #define LEN_TO_WORD(x)			((x) / sizeof(uint32_t) + ((x) % sizeof(uint32_t) ? 1:0))
 #define LEN32_ALIGNED(x)		(((x) / sizeof(uint32_t) + \
 					 ((x) % sizeof(uint32_t) ? 1:0)) * sizeof(uint32_t))
@@ -161,6 +164,7 @@ struct QueueInfo {
     struct QueueMemPool         msg_pool;
     struct QueueMemPool         hi_msg_pool;
     SemaphoreHandle_t		lock;
+    EventGroupHandle_t 		evtGrp;
     QueueHandle_t               sendQ;
 };
 
