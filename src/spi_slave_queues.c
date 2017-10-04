@@ -430,11 +430,6 @@ static size_t spi_queue_write(uint8_t channel, const uint32_t* buffer, size_t nu
     size_t words_written = 0;
     int32_t err;
 
-    if (xSemaphoreTake(queueMain.info[channel].lock, portMAX_DELAY) != pdTRUE) {
-	LOG_E(common, "xSemaphoreTake() failed");
-        goto cleanup;
-    }
-
     if (!BF_GET(qs->flags, FLAGS_IN_USE_OFFSET, FLAGS_IN_USE_WIDTH)) {
 	LOG_W(common, "queue(%u) unused", channel);
 	goto cleanup;
@@ -494,12 +489,6 @@ static size_t spi_queue_write(uint8_t channel, const uint32_t* buffer, size_t nu
 
 cleanup:
 //    LOG_I(common, "q(%d) words written/offset(%d/%u)", channel, words_written, write_offset);
-
-    if (xSemaphoreGive(queueMain.info[channel].lock) != pdTRUE) {
-	LOG_E(common, "xSemaphoreGive() failed");
-        goto cleanup;
-    }
-
     return words_written;
 }
 
@@ -524,7 +513,7 @@ static void spi_queue_s2m_task(void *pvParameters)
 		configASSERT(uxBits & QUEUE_BLOCKED_WRITER);
 
 		uxBits = xEventGroupWaitBits(queueMain.info[channel].evtGrp, QUEUE_UNBLOCK_WRITER, pdTRUE, pdTRUE, portMAX_DELAY);
-		configASSERT(uxBits & QUEUE_UNBLOCK_WRITER);
+		configASSERT(uxBits & QUEUE_BLOCKED_WRITER);
 
 		uxBits = xEventGroupClearBits(queueMain.info[channel].evtGrp, QUEUE_BLOCKED_WRITER);
 		configASSERT(!(uxBits & QUEUE_UNBLOCK_WRITER));
@@ -738,13 +727,6 @@ int32_t spi_queue_init(void)
 	EventBits_t uxBits = xEventGroupClearBits(queueMain.info[i].evtGrp, QUEUE_BLOCKED_WRITER | QUEUE_UNBLOCK_WRITER);
 	configASSERT(!(uxBits & QUEUE_BLOCKED_WRITER) && !(uxBits & QUEUE_UNBLOCK_WRITER));
 
-	queueMain.info[i].lock = xSemaphoreCreateMutex();
-	if (!queueMain.info[i].lock) {
-	    LOG_W(common, "xSemaphoreCreateMutex(%d) failed", i);
-	    ret = -1;
-	    goto cleanup;
-	}
-
     	enum QueueDirection direction = BF_GET(qs->flags, FLAGS_DIRECTION_OFFSET, FLAGS_DIRECTION_WIDTH);
 	if (QUEUE_DIRECTION_M2S == direction) {
 	    snprintf(queueMain.info[i].task.name, sizeof(queueMain.info[i].task.name), "qM2S%d", i);
@@ -830,11 +812,6 @@ size_t spi_queue_read(uint8_t channel, uint32_t* buffer, size_t num_words)
     size_t words_read = 0;
     int32_t err;
 
-    if (xSemaphoreTake(queueMain.info[channel].lock, portMAX_DELAY) != pdTRUE) {
-	LOG_E(common, "xSemaphoreTake() failed");
-        goto cleanup;
-    }
-
     write_offset = qs->write_offset;
     read_offset = qs->read_offset;
     if (read_offset > write_offset) {
@@ -883,12 +860,6 @@ size_t spi_queue_read(uint8_t channel, uint32_t* buffer, size_t num_words)
 
 cleanup:
 //    LOG_I(common, "q(%d) words read/offset(%d/%u)", channel, words_read, read_offset);
-
-    if (xSemaphoreGive(queueMain.info[channel].lock) != pdTRUE) {
-	LOG_E(common, "xSemaphoreGive() failed");
-        goto cleanup;
-    }
-
     return words_read;
 }
 

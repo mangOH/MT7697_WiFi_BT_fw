@@ -163,7 +163,6 @@ struct QueueInfo {
     struct QueueTask 		task;
     struct QueueMemPool         msg_pool;
     struct QueueMemPool         hi_msg_pool;
-    SemaphoreHandle_t		lock;
     EventGroupHandle_t 		evtGrp;
     QueueHandle_t               sendQ;
 };
