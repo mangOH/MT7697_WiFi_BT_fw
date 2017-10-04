@@ -629,7 +629,8 @@ static void _spi_slave_interrupt_handler(void* data)
 		enum QueueDirection direction = BF_GET(qs->flags, FLAGS_DIRECTION_OFFSET, FLAGS_DIRECTION_WIDTH);
 		if (QUEUE_DIRECTION_M2S == direction) {
 	            vTaskNotifyGiveFromISR(queueMain.info[i].task.hndl, &xHigherPriorityTaskWoken);
-	            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+		    if (xHigherPriorityTaskWoken)
+	                portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	        }
 		else if (QUEUE_DIRECTION_S2M == direction) {
 		    EventBits_t uxBits = xEventGroupGetBitsFromISR(queueMain.info[i].evtGrp);
@@ -640,6 +641,8 @@ static void _spi_slave_interrupt_handler(void* data)
 			if (spi_queue_get_num_free_words(i) >= LEN_TO_WORD(LEN32_ALIGNED(req->cmd.len))) {
 //		            LOG_I(common, "channel(%u) unblocked writer", i);
 		            uxBits = xEventGroupSetBitsFromISR(queueMain.info[i].evtGrp, QUEUE_UNBLOCK_WRITER, &xHigherPriorityTaskWoken);
+			    if (xHigherPriorityTaskWoken)
+        		        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 			}			
 		    }
 		}
@@ -789,7 +792,7 @@ int32_t spi_queue_send_req(uint8_t ch, const struct mt7697_rsp_hdr* req)
 {
     int32_t ret = 0;
 
-    if (xQueueSendToBack(queueMain.info[ch].sendQ, &req, 0) != pdPASS) {
+    if (xQueueSendToBack(queueMain.info[ch].sendQ, &req, portMAX_DELAY) != pdPASS) {
 	LOG_W(common, "xQueueSendToBack() failed");
 	ret = -1;
 	goto cleanup;
@@ -810,7 +813,8 @@ int32_t spi_queue_send_req_from_isr(uint8_t ch, const struct mt7697_rsp_hdr* req
 	goto cleanup;
     }
 
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    if (xHigherPriorityTaskWoken)
+        portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 
 cleanup:
     return ret;
