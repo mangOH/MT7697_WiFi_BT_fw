@@ -83,7 +83,7 @@
 #define QUEUE_MSG_HI_PRIORITY		1
 #define QUEUE_MSG_POOL_LEN		34
 #define QUEUE_MSG_POOL_HI_LEN		2
-#define QUEUE_SENDQ_LEN			64
+#define QUEUE_SENDQ_LEN			128
 #define QUEUE_WORD_SIZE			4096
 
 #define mt7697_queue_init_rsp		mt7697_rsp_hdr

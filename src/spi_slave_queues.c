@@ -273,7 +273,7 @@ cleanup:
         LOG_I(common, "<-- INIT QUEUE(%u/%u) RSP len(%u) result(%d)", m2s_ch, s2m_ch, rsp->cmd.len, ret);
         ret = spi_queue_send_req(s2m_ch, (struct mt7697_rsp_hdr*)rsp);
         if (ret < 0) {
-            LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
+            LOG_W(common, "spi_queue_send_req() failed(%d)", ret);
             goto cleanup;
         }
     }
@@ -371,7 +371,7 @@ cleanup:
         LOG_I(common, "<-- RESET QUEUE(%u/%u) RSP len(%u) result(%d)", m2s_ch, s2m_ch, rsp->cmd.len, ret);
         ret = spi_queue_send_req(s2m_ch, (struct mt7697_rsp_hdr*)rsp);
         if (ret < 0) {
-            LOG_W(common, "spi_queue_send_req_from_isr() failed(%d)", ret);
+            LOG_W(common, "spi_queue_send_req() failed(%d)", ret);
             goto cleanup;
         }
     }
