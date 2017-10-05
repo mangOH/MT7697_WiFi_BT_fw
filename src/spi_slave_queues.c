@@ -646,6 +646,15 @@ uint8_t* spi_queue_pool_alloc_msg(uint8_t ch, uint8_t priority, uint16_t len)
     uint8_t* ret = NULL;
 
     if (msg_pool->start != NULL) {
+	if (!uxQueueSpacesAvailable(queueMain.info[ch].sendQ)) {
+	    LOG_E(common, "RTOS send queue no space");
+            goto cleanup;
+	}
+	else if (!priority && (uxQueueSpacesAvailable(queueMain.info[ch].sendQ) < QUEUE_SENDQ_HIGH_WATER_MARK)) {
+	    LOG_E(common, "low priority message - RTOS send queue high water mark");
+            goto cleanup;
+	}
+
 	if (xSemaphoreTake(msg_pool->lock, portMAX_DELAY) != pdTRUE) {
 	    LOG_E(common, "xSemaphoreTake() failed");
             goto cleanup;
