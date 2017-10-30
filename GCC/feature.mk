@@ -12,7 +12,7 @@ MTK_CLI_TEST_MODE_ENABLE            = y
 MTK_CLI_EXAMPLE_MODE_ENABLE         = n
 MTK_SMTCN_ENABLE                    = y
 MTK_BLE_SMTCN_ENABLE                = y
-MTK_BLE_GPIO_SERVICE                = y
+MTK_BLE_GPIO_SERVICE                = n
 MTK_WIFI_WPS_ENABLE                 = y
 MTK_WIFI_DIRECT_ENABLE              = n
 MTK_WIFI_REPEATER_ENABLE            = y
@@ -40,7 +40,7 @@ MTK_BLE_BQB_TEST_ENABLE             = y
 MTK_BLE_CLI_ENABLE                  = y
 MTK_BLE_BQB_CLI_ENABLE              = y
 MTK_NVDM_ENABLE                     = y
-MTK_MCS_ENABLE                      = y
+MTK_MCS_ENABLE                      = n
 
 # bt module enable
 MTK_BT_ENABLE                       = y
@@ -51,3 +51,7 @@ MTK_BT_AVRCP_ENH_ENABLE             = n
 MTK_BT_A2DP_ENABLE                  = n
 MTK_BT_PBAP_ENABLE                  = n
 MTK_BT_SPP_ENABLE                   = n
+
+# swi wifi transport
+SWI_SPI_ENABLE			    = n
+SWI_UART_ENABLE			    = y

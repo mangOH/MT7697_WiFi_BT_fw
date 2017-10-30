@@ -174,14 +174,25 @@ APP_FILES       = $(APP_PATH_SRC)/main.c     \
                   $(APP_PATH_SRC)/ut_app/connection_info.c \
                   $(APP_PATH_SRC)/ut_app/gatt_service.c \
                   $(APP_PATH_SRC)/ut_app/gatt_command.c \
-                  $(APP_PATH_SRC)/spi_slave_queues.c \
-                  $(APP_PATH_SRC)/spi_slave_wifi.c \
+	          $(APP_PATH_SRC)/swi_mem_pool.c \
+		  $(APP_PATH_SRC)/swi_s2m.c \
+		  $(APP_PATH_SRC)/swi_m2s.c \
+                  $(APP_PATH_SRC)/swi_wifi.c \
                   $(APP_PATH)/GCC/syscalls.c \
                   driver/board/mt76x7_hdk/util/src/io_def.c
 
 CFLAGS += -D__BT_DEBUG__
 
 SYS_FILES       = $(APP_PATH_SRC)/system_mt7687.c
+
+# swi spi/uart support
+ifeq ($(SWI_SPI_ENABLE),y)
+APP_FILES       += $(APP_PATH_SRC)/swi_spi_slave_queues.c
+CFLAGS          += -DSWI_SPI_ENABLE
+else ($(SWI_UART_ENABLE),y)
+APP_FILES       += $(APP_PATH_SRC)/swi_uart.c
+CFLAGS          += -DSWI_UART_ENABLE
+endif
 
 # sky added for mcs support
 ifeq ($(MTK_MCS_ENABLE),y)

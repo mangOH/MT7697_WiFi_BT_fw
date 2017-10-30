@@ -52,3 +52,9 @@ MTK_MET_TRACE_ENABLE                = n
 MTK_CODE_COVERAGE_ENABLE            = n
 MTK_CLI_TEST_MODE_ENABLE            = y
 MTK_JOYLINK_ENABLE                  = n
+
+# swi wifi transport
+SWI_SPI_ENABLE			    = y
+SWI_UART_ENABLE			    = n
+
+

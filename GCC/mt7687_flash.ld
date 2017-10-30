@@ -49,8 +49,11 @@ SECTIONS
         _data_start = .;
 	    KEEP(*(.isr_vector))
         . = ALIGN(4);
-        /* The two lines below were added to place the SPI slave MOSI buffer in an address that can
-        be known by the SPI master. */
+
+        /* 
+         * The two lines below were added to place the SPI slave MOSI buffer in an address that can
+         * be known by the SPI master. 
+         */
         . = ALIGN(512);
 	    KEEP(*(.spi_slave))
         *(.data)

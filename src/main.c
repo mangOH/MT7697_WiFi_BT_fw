@@ -73,8 +73,12 @@ extern void tickless_init(void);
 #include "smt_conn.h"
 #endif
 
-#include "spi_slave_queues.h"
-#include "spi_slave_wifi.h"
+#include "swi_app_info.h"
+#include "swi_spi_slave_queues.h"
+#include "swi_uart.h"
+#include "swi_wifi.h"
+
+swi_app_info_t app_info;
 
 #ifdef BLE_THROUGHPUT
 extern void ble_gatt_send_data();
@@ -117,6 +121,23 @@ int main(void)
     }
 #endif
 
+#ifdef SWI_SPI_ENABLE
+    ret = swi_spi_queue_init(&app_info.itf.spi);
+    if (ret < 0) {
+	LOG_E(common, "swi_spi_queue_init() failed(%d)", ret);
+	goto cleanup;
+    }
+#elif SWI_UART_ENABLE
+    ret = swi_uart_init(&app_info.itf.uart);
+    if (ret < 0) {
+	LOG_E(common, "swi_uart_init() failed(%d)", ret);
+	goto cleanup;
+    }
+#else
+    LOG_E(common, "SWI SPI/UART enable missing");
+    goto cleanup;
+#endif
+
     /* User initial the parameters for wifi initial process,  system will determin which wifi operation mode
      * will be started , and adopt which settings for the specific mode while wifi initial process is running*/
     wifi_cfg_t wifi_config = {0};
@@ -157,29 +178,12 @@ int main(void)
     /* Initialize wifi stack and register wifi init complete event handler,
      * notes:  the wifi initial process will be implemented and finished while system task scheduler is running,
      *            when it is done , the WIFI_EVENT_IOT_INIT_COMPLETE event will be triggered */
+    LOG_I(common, "init WiFi stack");
     wifi_init(&config, &config_ext);
-
-    ret = wifi_connection_register_event_handler(WIFI_EVENT_IOT_INIT_COMPLETE, wifi_init_done_handler);
-    if (ret < 0) {
-	LOG_E(common, "wifi_connection_register_event_handler() failed(%d)", ret);
-	goto cleanup;
-    }
 
     /* Tcpip stack and net interface initialization,  dhcp client, dhcp server process initialization*/
     lwip_tcpip_config_t tcpip_config = {{0}, {0}, {0}, {0}, {0}, {0}};
     lwip_tcpip_init(&tcpip_config, config.opmode);
-
-    ret = spi_queue_init();
-    if (ret < 0) {
-	LOG_E(common, "spi_queue_init() failed(%d)", ret);
-	goto cleanup;
-    }
-
-    ret = wifi_init_evt_hndlrs();
-    if (ret < 0) {
-	LOG_E(common, "wifi_init_evt_hndlrs() failed(%d)", ret);
-	goto cleanup;
-    }
 
 #ifdef MTK_WIFI_CONFIGURE_FREE_ENABLE
         uint8_t configured = 0;
@@ -224,7 +228,7 @@ int main(void)
 #endif
 
 #endif
-
+    LOG_I(common, "run WiFi");
     vTaskStartScheduler();
 
 cleanup:
