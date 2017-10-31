@@ -302,8 +302,8 @@ cleanup:
 
 static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
 {
-    uint8_t empty_pmk[WIFI_LENGTH_PMK] = {0};
-    uint8_t pmk[WIFI_LENGTH_PMK] = {0};
+    uint8_t empty_pmk[WIFI_LENGTH_PASSPHRASE] = {0};
+    uint8_t pmk[WIFI_LENGTH_PASSPHRASE + 1] = {0};
     size_t words_read;
     uint32_t port;
     int32_t ret = 0;
@@ -336,13 +336,13 @@ static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
 	goto cleanup;
     }
 
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)pmk, LEN_TO_WORD(WIFI_LENGTH_PMK));
-    if (words_read != LEN_TO_WORD(WIFI_LENGTH_PMK)) {
-	LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(WIFI_LENGTH_PMK));
+    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)pmk, LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE));
+    if (words_read != LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE)) {
+	LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE));
 	ret = -1;
 	goto cleanup;
     }
-    LOG_HEXDUMP_I(common, "PMK", pmk, WIFI_LENGTH_PMK);
+    LOG_I(common, "PMK ('%s')", pmk);
 
     LOG_I(common, "PMK port(%d)", port);
     if (!swi_wifi_validate_port(port)) {
@@ -352,16 +352,24 @@ static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
     }
 
     if (memcmp(pmk, empty_pmk, WIFI_LENGTH_PMK)) {
-    	ret = wifi_config_set_pmk(port, pmk);
+    	ret = wifi_config_set_wpa_psk_key(port, pmk, WIFI_LENGTH_PASSPHRASE);
     	if (ret < 0) {
 	    LOG_W(common, "wifi_config_set_pmk() failed(%d)", ret);
 	    goto cleanup;
         }
+
+	if (port == WIFI_PORT_AP) {
+	    ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_WPA2_PSK , WIFI_ENCRYPT_TYPE_AES_ENABLED);
+            if (ret < 0) {
+	        LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
+	        goto cleanup;
+            }
+	}
     }
     else {
 	ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_OPEN, WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED);
         if (ret < 0) {
-	    LOG_W(common, "wifi_config_get_security_mode() failed(%d)", ret);
+	    LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
 	    goto cleanup;
         }
     }

@@ -171,7 +171,7 @@ typedef struct __attribute__((packed, aligned(4))) _mt7697_scan_complete_ind_t {
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_pmk_req_t {
 	mt7697_cmd_hdr_t		cmd;
 	uint32_t			port;
-	uint8_t				pmk[LEN32_ALIGNED(WIFI_LENGTH_PMK)];
+	uint8_t				pmk[LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
 } mt7697_set_pmk_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_channel_req_t {
