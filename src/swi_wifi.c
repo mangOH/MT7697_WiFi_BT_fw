@@ -249,10 +249,6 @@ static int32_t swi_wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32
 	if (wifi_info.netif) netif_set_link_down(wifi_info.netif);
 
 	LOG_HEXDUMP_I(common, "MAC", payload, length);
-        if ((length < WIFI_MAC_ADDRESS_LENGTH) || !memcmp(payload, zero_bssid, WIFI_MAC_ADDRESS_LENGTH)) {
-	    goto cleanup;
-	}
-
 	if (wifi_info.if_idx != (uint16_t)-1) {
 	    mt7697_disconnect_ind_t* ind = (mt7697_disconnect_ind_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
                                                                                             SWI_MEM_POOL_MSG_HI_PRIORITY,
@@ -430,25 +426,34 @@ static int32_t swi_wifi_proc_set_channel_req(swi_m2s_info_t* m2s_info)
 	goto cleanup;
     }
 
-    LOG_I(common, "channel(%u)", ch);
+    ret = wifi_config_get_channel(port, &wifi_info.channel); 
+    if (ret < 0) {
+	LOG_W(common, "wifi_config_get_channel() failed(%d)", ret);
+	goto cleanup;
+    }
+
+    LOG_I(common, "channel curr/set(%u/%u)", wifi_info.channel, ch);
     if (!ch) {
 	LOG_W(common, "invalid channel(%d)", ch);
 	ret = -1;
 	goto cleanup;
     }
-    wifi_info.channel = ch;
 
-    LOG_I(common, "channel port(%d)", port);
-    if (!swi_wifi_validate_port(port)) {
-	LOG_W(common, "invalid port(%d)", port);
-	ret = -1;
-	goto cleanup;
-    }
+    if (wifi_info.channel != ch) {
+        wifi_info.channel = ch;
 
-    ret = wifi_config_set_channel(port, (uint8_t)ch);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_set_channel() failed(%d)", ret);
-	goto cleanup;
+        LOG_I(common, "channel port(%d)", port);
+        if (!swi_wifi_validate_port(port)) {
+	    LOG_W(common, "invalid port(%d)", port);
+	    ret = -1;
+	    goto cleanup;
+        }
+
+        ret = wifi_config_set_channel(port, (uint8_t)ch);
+        if (ret < 0) {
+	    LOG_W(common, "wifi_config_set_channel() failed(%d)", ret);
+	    goto cleanup;
+       }
     }
 
 cleanup:
@@ -523,10 +528,12 @@ cleanup:
 static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info)
 {
     uint8_t ssid[WIFI_MAX_LENGTH_OF_SSID + 1] = {0};
+    uint8_t curr_ssid[WIFI_MAX_LENGTH_OF_SSID + 1] = {0};
     size_t words_read;
     uint32_t ssid_len;
     uint32_t port;
     int32_t ret = 0;
+    uint8_t curr_ssid_len;
 
     mt7697_set_ssid_rsp_t* rsp = (mt7697_set_ssid_rsp_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
                                                                                 SWI_MEM_POOL_MSG_HI_PRIORITY,
@@ -584,12 +591,21 @@ static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info)
 	goto cleanup;
     }
 
-    ssid[ssid_len] = '\0';
-    LOG_I(common, "SSID('%s')", ssid); 
-    ret = wifi_config_set_ssid(port, ssid, ssid_len);
+    ret = wifi_config_get_ssid(port, curr_ssid, &curr_ssid_len); 	
     if (ret < 0) {
-	LOG_W(common, "wifi_config_set_ssid() failed(%d)", ret);
+	LOG_W(common, "wifi_config_get_ssid() failed(%d)", ret);
 	goto cleanup;
+    }
+
+    ssid[ssid_len] = '\0';
+    curr_ssid[curr_ssid_len] = '\0';
+    LOG_I(common, "SSID curr/set('%s'/'%s')", curr_ssid, ssid);
+    if ((ssid_len != curr_ssid_len) || strncmp(ssid, curr_ssid, ssid_len)) { 
+        ret = wifi_config_set_ssid(port, ssid, ssid_len);
+        if (ret < 0) {
+	    LOG_W(common, "wifi_config_set_ssid() failed(%d)", ret);
+	    goto cleanup;
+        }
     }
 
 cleanup:
@@ -1011,10 +1027,9 @@ static int32_t swi_wifi_proc_set_opmode_req(swi_m2s_info_t* m2s_info)
 	LOG_W(common, "wifi_config_get_opmode() failed(%d)", ret);
 	goto cleanup;
     }
-    LOG_I(common, "opmode(%u)", curr_opmode);
-    
+
+    LOG_I(common, "current/set opmode(%u/%u)", curr_opmode, opmode);
     if (curr_opmode != opmode) {
-        LOG_I(common, "set opmode(%u)", opmode);
         ret = wifi_config_set_opmode(opmode);
         if (ret < 0) {
 	    LOG_W(common, "wifi_config_set_opmode() failed(%d)", ret);
@@ -1344,8 +1359,8 @@ cleanup:
 static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info)
 {    
     uint32_t port;
-    uint32_t auth_mode;
-    uint32_t encrypt_type;
+    uint32_t auth_mode, curr_auth_mode;
+    uint32_t encrypt_type, curr_encrypt_type;
     int32_t ret = 0;
 
     mt7697_set_security_mode_rsp_t* rsp = (mt7697_set_security_mode_rsp_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
@@ -1388,7 +1403,6 @@ static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info)
 	ret = -1;
 	goto cleanup;
     }
-    LOG_I(common, "auth mode(%d)", auth_mode);
 
     words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&encrypt_type, LEN_TO_WORD(sizeof(uint32_t)));
     if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
@@ -1396,12 +1410,21 @@ static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info)
 	ret = -1;
 	goto cleanup;
     }
-    LOG_I(common, "encrypt type(%d)", encrypt_type);
+    LOG_I(common, "auth mode curr/set(%d), encrypt type curr/set(%d)", 
+        curr_auth_mode, auth_mode, curr_encrypt_type, encrypt_type);
 
-    ret = wifi_config_set_security_mode(port, auth_mode, encrypt_type);
+    ret = wifi_config_get_security_mode(port, &curr_auth_mode, &curr_encrypt_type);
     if (ret < 0) {
-	LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
+	LOG_W(common, "wifi_config_get_security_mode() failed(%d)", ret);
 	goto cleanup;
+    }
+
+    if ((curr_auth_mode != auth_mode) || (curr_encrypt_type != encrypt_type)) {
+        ret = wifi_config_set_security_mode(port, auth_mode, encrypt_type);
+        if (ret < 0) {
+	    LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
+	    goto cleanup;
+        }
     }
 
 cleanup:
