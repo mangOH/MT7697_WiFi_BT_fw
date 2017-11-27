@@ -7,6 +7,7 @@
 
 typedef enum _mt7697_cmd_grp_e {
     MT7697_CMD_GRP_QUEUE = 0,
+    MT7697_CMD_GRP_UART,
     MT7697_CMD_GRP_80211,
     MT7697_CMD_GRP_BT,
 } mt7697_cmd_grp_e;

@@ -7,8 +7,8 @@
 static void swi_uart_callback(hal_uart_callback_event_t, void*);
 static void swi_uart_m2s_task(void*);
 
-static char rx_vfifo_buffer[SWI_UART_RX_VFIFO_SIZE] __attribute__ ((aligned(4), section(".noncached_zidata")));
-static char tx_vfifo_buffer[SWI_UART_TX_VFIFO_SIZE] __attribute__ ((aligned(4), section(".noncached_zidata")));
+static uint8_t rx_vfifo_buffer[SWI_UART_RX_VFIFO_SIZE] __attribute__ ((aligned(4), section(".noncached_zidata")));
+static uint8_t tx_vfifo_buffer[SWI_UART_TX_VFIFO_SIZE] __attribute__ ((aligned(4), section(".noncached_zidata")));
 
 static void swi_uart_callback(hal_uart_callback_event_t status, void *user_data)
 {
@@ -41,6 +41,67 @@ static void swi_uart_callback(hal_uart_callback_event_t status, void *user_data)
     }
 }
 
+static int32_t swi_uart_proc_shutdown_req(swi_m2s_info_t* m2s_info)
+{
+    swi_uart_info_t* uart_info = container_of(m2s_info, swi_uart_info_t, m2s);
+    int32_t ret = 0;
+
+    mt7697_uart_shutdown_rsp_t* rsp = (mt7697_uart_shutdown_rsp_t*)swi_mem_pool_alloc_msg(&uart_info->s2m.msg_pool_info,
+                                                                                          SWI_MEM_POOL_MSG_HI_PRIORITY,
+                                                                                          uart_info->s2m.sendQ,
+                                                                                          LEN32_ALIGNED(sizeof(mt7697_uart_shutdown_rsp_t)));
+    if (!rsp) {
+	LOG_W(common, "swi_mem_pool_alloc_msg() failed");
+        ret = -1;
+	goto cleanup;
+    }
+
+    rsp->cmd.len = sizeof(mt7697_uart_shutdown_rsp_t);
+    rsp->cmd.grp = MT7697_CMD_GRP_UART;
+    rsp->cmd.type = MT7697_CMD_UART_SHUTDOWN_RSP;
+
+    LOG_I(common, "--> UART SHUTDOWN(%d)", m2s_info->cmd_hdr.len);
+    if (m2s_info->cmd_hdr.len != sizeof(mt7697_uart_shutdown_req_t)) {
+	LOG_W(common, "invalid UART SHUTDOWN req len(%d != %d)", m2s_info->cmd_hdr.len, sizeof(mt7697_uart_shutdown_req_t));
+	ret = -1;
+	goto cleanup;
+    }
+
+cleanup:
+    if (rsp) {
+        rsp->result = ret;
+        LOG_I(common, "<-- UART SHUTDOWN rsp len(%u) result(%d)", rsp->cmd.len, ret);
+        int32_t err = swi_s2m_send_req(&uart_info->s2m, (mt7697_rsp_hdr_t*)rsp);
+        if (err < 0) {
+            LOG_W(common, "swi_s2m_send_req() failed(%d)", err);
+            ret = ret ? ret:err;
+        }
+    }
+
+    return ret;
+}
+
+static int32_t swi_uart_proc_cmd(swi_m2s_info_t* m2s_info)
+{
+    int32_t ret = 0;
+
+    switch (m2s_info->cmd_hdr.type) {
+    case MT7697_CMD_UART_SHUTDOWN_REQ:
+        ret = swi_uart_proc_shutdown_req(m2s_info);
+	if (ret) {
+	    LOG_W(common, "swi_uart_proc_shutdown_req() failed(%d)", ret);
+	}
+        break;
+
+    default:
+	LOG_W(common, "invalid cmd type(%d)", m2s_info->cmd_hdr.type);
+	ret = -1;
+	break;
+    }
+
+    return ret;
+}
+
 static void swi_uart_m2s_task(void* param)
 {
     swi_m2s_info_t* m2s_info = (swi_m2s_info_t*)param;
@@ -55,6 +116,13 @@ static void swi_uart_m2s_task(void* param)
 	}
 
         switch (m2s_info->cmd_hdr.grp) {
+	    case MT7697_CMD_GRP_UART:
+		ret = swi_uart_proc_cmd(m2s_info);
+	        if (ret < 0) {
+	            LOG_W(common, "swi_uart_proc_cmd() failed(%d)", ret);
+	        }
+		break;
+
 	    case MT7697_CMD_GRP_80211:
 	        ret = swi_wifi_proc_cmd(m2s_info);
 	        if (ret < 0) {
@@ -79,7 +147,6 @@ size_t swi_uart_send(void* wr_hndl, const uint32_t* buff, size_t len)
 {
     swi_uart_info_t* uart_info = (swi_uart_info_t*)wr_hndl;
     uint8_t *pbuf = (uint8_t*)buff;
-    size_t ret = 0;
     size_t snd_cnt;
     size_t left = len * sizeof(uint32_t);
 
@@ -102,17 +169,13 @@ size_t swi_uart_send(void* wr_hndl, const uint32_t* buff, size_t len)
 	configASSERT(!(uxBits & SWI_S2M_UNBLOCK_WRITER));
     }
 
-    ret = len;
-
-cleanup:
-    return ret;
+    return len;
 }
 
 size_t swi_uart_recv(void* rd_hndl, uint32_t* buff, size_t len)
 {
     swi_uart_info_t* uart_info = (swi_uart_info_t*)rd_hndl;
     uint8_t *pbuf = (uint8_t*)buff;
-    size_t ret = 0;
     size_t left = len * sizeof(uint32_t);
     uint32_t rcv_cnt;
 

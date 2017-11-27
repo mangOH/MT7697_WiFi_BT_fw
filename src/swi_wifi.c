@@ -243,9 +243,7 @@ static int32_t swi_wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32
     }
     case WIFI_EVENT_IOT_DISCONNECTED:
     {
-	uint8_t zero_bssid[WIFI_MAC_ADDRESS_LENGTH] = {0};
-
-        LOG_I(common, "==> DISCONNECTED\n");
+	LOG_I(common, "==> DISCONNECTED\n");
 	if (wifi_info.netif) netif_set_link_down(wifi_info.netif);
 
 	LOG_HEXDUMP_I(common, "MAC", payload, length);
@@ -600,7 +598,7 @@ static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info)
     ssid[ssid_len] = '\0';
     curr_ssid[curr_ssid_len] = '\0';
     LOG_I(common, "SSID curr/set('%s'/'%s')", curr_ssid, ssid);
-    if ((ssid_len != curr_ssid_len) || strncmp(ssid, curr_ssid, ssid_len)) { 
+    if ((ssid_len != curr_ssid_len) || memcmp(ssid, curr_ssid, ssid_len)) { 
         ret = wifi_config_set_ssid(port, ssid, ssid_len);
         if (ret < 0) {
 	    LOG_W(common, "wifi_config_set_ssid() failed(%d)", ret);
