@@ -1,0 +1,293 @@
+diff -U3 '--exclude=*.orig' '--exclude=*patch*' -r LinkIt_SDK_V4.3.0_public.orig/middleware/MTK/wifi_service/combo/inc/wifi_api.h LinkIt_SDK_V4.3.0_public/middleware/MTK/wifi_service/combo/inc/wifi_api.h
+--- LinkIt_SDK_V4.3.0_public.orig/middleware/MTK/wifi_service/combo/inc/wifi_api.h	2017-05-12 03:26:35.000000000 -0700
++++ LinkIt_SDK_V4.3.0_public/middleware/MTK/wifi_service/combo/inc/wifi_api.h	2018-01-04 14:46:26.484802721 -0800
+@@ -481,6 +481,18 @@
+ */
+ typedef int32_t (* wifi_rx_handler_t)(uint8_t *payload, uint32_t length);
+ 
++#if 1 // MT7687_BY_PASS_L3_TO_HOST  //Jinchuan.Bao add for L3 Rx transfer example
++/**
++* @brief This defines the 802.3 RX raw packet handler. Call #wifi_config_register_net_rx_handler() to register a handler, then the network
++*           processor will deliver the 802.3 packets except EAPOL packet to the handler function instead of sending them to the IP stack.
++* @param[in] p is the pointer of the packet with lwip pbuf format,  p->playload is the payload of 802.3 Rx raw packet.
++* @param[in] netif  is the pointer of the net interface for this packet.
++*
++* @return  1: handled, and the packet won't be processed by other tasks 0: not handled, it will be processed by other tasks.
++*/
++typedef int32_t (* wifi_net_rx_handler_t)(struct pbuf *p, struct netif *netif);
++#endif
++
+ /**
+ * @}
+ */
+@@ -2271,6 +2283,9 @@
+ */
+ int32_t wifi_config_register_rx_handler(wifi_rx_handler_t wifi_rx_handler);
+ 
++int32_t wifi_config_register_net_rx_handler(wifi_net_rx_handler_t wifi_rx_handler);
++int32_t wifi_config_unregister_net_rx_handler(void);
++
+ /**
+  * @brief This function unregisters the handler to receive 802.11 raw packets from the network processor.
+  * @brief Once the handler is unregistered, the network processor will send the packets to the IP stack.
+diff -U3 '--exclude=*.orig' '--exclude=*patch*' -r LinkIt_SDK_V4.3.0_public.orig/middleware/third_party/lwip/ports/ethernetif.c LinkIt_SDK_V4.3.0_public/middleware/third_party/lwip/ports/ethernetif.c
+--- LinkIt_SDK_V4.3.0_public.orig/middleware/third_party/lwip/ports/ethernetif.c	2017-05-12 03:26:35.000000000 -0700
++++ LinkIt_SDK_V4.3.0_public/middleware/third_party/lwip/ports/ethernetif.c	2018-01-04 15:10:47.492846479 -0800
+@@ -76,6 +76,11 @@
+ #endif
+ #include "lwip/netif.h"
+ #include "os_util.h"
++
++#ifdef MTK_WIFI_ROM_ENABLE
++#include "mlme_interface.h"
++#endif
++
+ int32_t pkt_lock_init(struct os_time *timeout_value);
+ 
+ 
+@@ -142,11 +147,7 @@
+ void inband_handle_func(void* pkt_ptr, unsigned char *payload, unsigned int len);
+ 
+ #if defined(MTK_WIFI_STUB_CONF_ENABLE)
+-#if (MTK_WIFI_STUB_CONF_SPIM_ENABLE || MTK_WIFI_STUB_CONF_SDIO_MSDC_ENABLE)
+-uint16_t wfcm_to_slave(uint16_t op, uint8_t *ptr, uint32_t ptrSize, uint8_t *rsp, uint32_t *rspSize, uint8_t fromISR);
+-#else
+-uint8_t wfc_send_to_host(uint8_t *pbuf, uint32_t bufSize);
+-#endif
++uint8_t wfc_send_to_host(uint8_t *pbuf, uint32_t bufSize, uint8_t isEvt);
+ #endif
+ 
+ #if 0
+@@ -456,7 +457,7 @@
+ }
+ #endif
+ extern unsigned char IoT_Init_Done;
+-void send_txdata_to_wifi_thread(void *pbuffer);
++void send_txdata_to_wifi_thread(void *pbuffer, struct netif * netif);
+ 
+ #if defined(MTK_WIFI_STUB_CONF_ENABLE) && (MTK_WIFI_STUB_CONF_SPIM_ENABLE || MTK_WIFI_STUB_CONF_SDIO_MSDC_ENABLE || MTK_WFC_WITH_LWIP_NO_WIFI_ENABLE)
+ 
+@@ -466,17 +467,11 @@
+     uint32_t total_len = 0;
+ 
+     for(q = p; q != NULL; q = q->next) {
+-        total_len = total_len + (q->len);        
++        total_len = total_len + (q->len);
+     }
+-
+-#if (MTK_WIFI_STUB_CONF_SPIM_ENABLE || MTK_WIFI_STUB_CONF_SDIO_MSDC_ENABLE)
+-    //printf("lwip(%u) -> S\r\n",total_len);
+-    wfcm_to_slave(6, (void *)p, total_len, NULL, NULL, 0);  //WFC_CMD_DTW_DATA
+-#else
+     //printf("S(%u) -> Host lwip\r\n",total_len);
+-    wfc_send_to_host((void *)p, total_len); 
+-#endif
+-		
++    wfc_send_to_host((void *)p, total_len, 0);
++
+     return CONNSYS_STATUS_SUCCESS;
+ }
+ 
+@@ -500,9 +495,68 @@
+     if(IoT_Init_Done)
+     {
+ #ifdef MT5932_SINGLE_CONTEXT
+-	pbuf_ref(p);
++	    pbuf_ref(p);
++#endif
++
++#ifdef MTK_WIFI_REPEATER_ENABLE
++
++        int    i = 0;
++        struct eth_hdr *ethhdr;
++        struct etharp_hdr *hdr;
++
++        int      sndAllInf = 0;
++        unsigned char op_mode = WIFI_MODE_STA_ONLY;
++
++        ethhdr = (struct eth_hdr *)p->payload;
++
++        fw_mlme_get_opmode(&op_mode);
++        if (op_mode == WIFI_MODE_REPEATER)
++        {
++           sndAllInf = (memcmp(&(ethhdr->dest.addr), "\xff\xff\xff\xff\xff\xff", 6) == 0)?1:0;
++           if(sndAllInf == 1)
++                pbuf_ref(p);
++        }
++
++        for (i=0; i<=sndAllInf; i++)
++        {
++            if (op_mode == WIFI_MODE_REPEATER)
++            {
++                if ( sndAllInf && (i==sndAllInf) )
++                {
++                    if (   (memcmp(&ethhdr->src, (struct eth_addr*)(sta_if.hwaddr), 6)==0)
++                        || (memcmp(&ethhdr->src, (struct eth_addr*)(ap_if.hwaddr), 6)==0)
++                       )
++                    {
++                       //LOG_I(lwip, "src - %2x:%2x:%2x:%2x:%2x:%2x, dest - %2x:%2x:%2x:%2x:%2x:%2x, sndAllInf(%d)\n", ethhdr->src.addr[0], ethhdr->src.addr[1], ethhdr->src.addr[2], ethhdr->src.addr[3], ethhdr->src.addr[4], ethhdr->src.addr[5], ethhdr->dest.addr[0], ethhdr->dest.addr[1], ethhdr->dest.addr[2], ethhdr->dest.addr[3], ethhdr->dest.addr[4], ethhdr->dest.addr[5], sndAllInf);
++                        netif = (netif == &ap_if)?&sta_if:&ap_if;
++                        ETHADDR16_COPY(&ethhdr->src, (struct eth_addr*)(netif->hwaddr));
++                        if ( ethhdr->type == PP_HTONS(ETHTYPE_ARP) )
++                        {
++                           hdr = (struct etharp_hdr *)((u8_t*)ethhdr + SIZEOF_ETH_HDR);
++                           #if ETHARP_SUPPORT_VLAN
++                             if (ethhdr->type == PP_HTONS(ETHTYPE_VLAN)) {
++                               hdr = (struct etharp_hdr *)(((u8_t*)ethhdr) + SIZEOF_ETH_HDR + SIZEOF_VLAN_HDR);
++                             }
++                           #endif /* ETHARP_SUPPORT_VLAN */
++                           ETHADDR16_COPY(&(hdr->shwaddr), (struct eth_addr*)(netif->hwaddr));
++                        }
++                    }
++                }
++                else if ( fw_mlme_find_connected_sta_by_mac(ethhdr->dest.addr))
++                {
++                    netif = &ap_if;
++                    if (memcmp(&ethhdr->src, (struct eth_addr*)(sta_if.hwaddr), 6)==0)
++                    {
++                        ETHADDR16_COPY(&ethhdr->src, (struct eth_addr*)(netif->hwaddr));
++                    }
++                    //LOG_I(lwip,"Change netif to ap_if : src - %2x:%2x:%2x:%2x:%2x:%2x, dest - %2x:%2x:%2x:%2x:%2x:%2x\n", ethhdr->src.addr[0], ethhdr->src.addr[1], ethhdr->src.addr[2], ethhdr->src.addr[3], ethhdr->src.addr[4], ethhdr->src.addr[5],ethhdr->dest.addr[0], ethhdr->dest.addr[1], ethhdr->dest.addr[2], ethhdr->dest.addr[3], ethhdr->dest.addr[4], ethhdr->dest.addr[5]);
++                }
++            }
++#endif
++            send_txdata_to_wifi_thread((void *)p, netif);
++#ifdef MTK_WIFI_REPEATER_ENABLE
++        }
+ #endif
+-        send_txdata_to_wifi_thread((void *)p);
+         return CONNSYS_STATUS_SUCCESS;
+     }
+     else
+@@ -516,6 +570,7 @@
+     }
+ #endif
+ 
++#ifdef MTK_MINISUPP_ENABLE
+ #ifdef MTK_WIFI_REPEATER_ENABLE
+     int    i = 0;
+     struct eth_hdr *ethhdr;
+@@ -574,7 +629,7 @@
+             }
+         }
+ #endif
+-
++#endif
+ #if (CONNSYS_DEBUG_MODE_EN == 1)
+     //if (CONNSYS_TEST_DEBUG(CONNSYS_DBG_TX_Q1))
+     //{
+@@ -707,9 +762,11 @@
+     DBG_CONNSYS(CONNSYS_DBG_TX_Q1,("== TX End ==\n"));
+ #endif
+ 
++#ifdef MTK_MINISUPP_ENABLE
+ #ifdef MTK_WIFI_REPEATER_ENABLE
+ }
+ #endif
++#endif
+     return ret;
+ }
+ #endif
+@@ -960,22 +1017,32 @@
+ {
+     struct pbuf *q;
+     uint32_t total_len = 0;
+-	
++
+     for(q = p; q != NULL; q = q->next) {
+-        total_len = total_len + (q->len);        
++        total_len = total_len + (q->len);
+     }
+-             
+-#if (!MTK_WIFI_STUB_CONF_SPIM_ENABLE && !MTK_WIFI_STUB_CONF_SDIO_MSDC_ENABLE)
+-    //printf("[HRX]:lwip <- S(%d)\r\n",total_len);
+-    wfc_send_to_host((void *)p, total_len); 
+-#else	
++
+     //printf("[HRX]:lwip <- S(%d)\r\n",total_len);
+-    wfcm_to_slave(6, (void *)p, total_len, NULL, NULL, 0); 	
+-#endif			
++    wfc_send_to_host((void *)p, total_len, 0);
+ }
+ 
+ #else
+ 
++#if 1 // MT7687_BY_PASS_L3_TO_HOST  //Jinchuan.Bao add for L3 Rx transfer example
++wifi_net_rx_handler_t g_wifi_net_rx_handler = NULL;
++
++int32_t wifi_config_register_net_rx_handler(wifi_net_rx_handler_t wifi_net_rx_handler)
++{
++    g_wifi_net_rx_handler = wifi_net_rx_handler;
++    return 0;
++}
++int32_t wifi_config_unregister_net_rx_handler()
++{
++    g_wifi_net_rx_handler = NULL;
++    return 0;
++}
++#endif
++
+ void
+ ethernetif_intr_enhance_mode_dispatch(struct pbuf *p, struct netif *netif)
+ {
+@@ -1003,6 +1070,19 @@
+   case ETHTYPE_PPPOEDISC:
+   case ETHTYPE_PPPOE:
+ #endif /* PPPOE_SUPPORT */
++
++#if 1 // MT7687_BY_PASS_L3_TO_HOST  //Jinchuan.Bao add for L3 Rx transfer example
++    /* full L3 packet send to rx handler */
++    if(g_wifi_net_rx_handler != NULL){
++        if (g_wifi_net_rx_handler(p, netif) == 1) {
++            /*if handler dealed with this packet,  free it's pbuf*/
++            pbuf_free(p);
++            p = NULL;
++            return;
++        }
++    }
++#endif
++
+     /* full packet send to tcpip_thread to process */
+     if (netif->input(p, netif) != ERR_OK)
+      { LWIP_DEBUGF(NETIF_DEBUG, ("ethernetif_input: IP input error\n"));
+@@ -1125,18 +1205,6 @@
+                      ip4_addr_t *ap_ip_addr, ip4_addr_t *ap_net_mask, ip4_addr_t *ap_gw,
+                      uint8_t opmode)
+ {
+-#if defined(MTK_WIFI_STUB_CONF_ENABLE) && (MTK_WIFI_STUB_CONF_SPIM_ENABLE || MTK_WIFI_STUB_CONF_SDIO_MSDC_ENABLE || MTK_WFC_WITH_LWIP_NO_WIFI_ENABLE)
+-#if (MTK_WIFI_STUB_CONF_SPIM_ENABLE || MTK_WIFI_STUB_CONF_SDIO_MSDC_ENABLE)
+-    uint8_t sta_mac_address[6] = {0x00, 0x0c, 0x43, 0x76, 0x86, 0x08}; //Keep the same as WiFi MAC
+-    uint8_t ap_mac_address[6] = {0x00, 0xd0, 0x59, 0xe1, 0x39, 0x88};
+-#else
+-    uint8_t sta_mac_address[6] = {0x00, 0xd0, 0x59, 0xe1, 0x40, 0x44};
+-    uint8_t ap_mac_address[6] = {0x00, 0xd0, 0x59, 0xe1, 0x40, 0x66};
+-#endif
+-
+-    memset(&sta_if, 0, sizeof(sta_if));
+-    memset(&ap_if,  0, sizeof(ap_if));
+-#else
+     uint8_t sta_mac_address[6];
+     uint8_t ap_mac_address[6];
+ 
+@@ -1153,7 +1221,6 @@
+         LOG_E(lwip, "get mac fail\n\r");
+         return;
+     }
+-#endif
+ 
+     netif_add(&ap_if, ap_ip_addr, ap_net_mask, ap_gw, NULL,
+               ethernetif_init2, tcpip_input);
+@@ -1200,7 +1267,7 @@
+ }
+ 
+ 
+-static int lwip_get_netif_name(netif_type_t netif_type, char *name)
++int lwip_get_netif_name(netif_type_t netif_type, char *name)
+ {
+     struct netif *netif = NULL;
+ 
+@@ -1264,3 +1331,4 @@
+                     opmode);
+ }
+ 
++
