@@ -1034,6 +1034,10 @@ static int32_t swi_wifi_proc_set_opmode_req(swi_m2s_info_t* m2s_info)
 	    goto cleanup; 
         }
     }
+    else {
+        ret = 0;
+        goto cleanup;
+    }
 
     wifi_info.netif = netif_find_by_type((opmode == WIFI_MODE_STA_ONLY) ? NETIF_TYPE_STA : NETIF_TYPE_AP);
     if (!wifi_info.netif) {
