@@ -1,0 +1,12 @@
+diff -U3 -r LinkIt_SDK_V4.3.0_public.orig/driver/chip/mt7687/src/common/spi_flash.c LinkIt_SDK_V4.3.0_public/driver/chip/mt7687/src/common/spi_flash.c
+--- LinkIt_SDK_V4.3.0_public.orig/driver/chip/mt7687/src/common/spi_flash.c	2017-05-12 03:26:35.000000000 -0700
++++ LinkIt_SDK_V4.3.0_public/driver/chip/mt7687/src/common/spi_flash.c	2018-01-04 14:36:49.380785437 -0800
+@@ -148,6 +148,7 @@
+     { "W25Q16DV",   0xef, 0x40150000, 8192,  256, 0x32, 0x6b, 0xeb},
+     { "W25Q80DV",   0xef, 0x40140000, 4096,  256, 0x32, 0x6b, 0xeb},
+     { "MX25L3233F", 0XC2, 0X20160000, 16384, 256, 0X38, 0X6B, 0XEB},
++    { "MX25R3235F", 0XC2, 0x28160000, 16384, 256, 0X38, 0X6B, 0XEB},
+     { "MX25L1635F", 0XC2, 0X20150000, 8192,  256, 0X38, 0X6B, 0XEB},
+     { "MX25V1635F", 0XC2, 0X20150000, 8192,  256, 0X38, 0X6B, 0XEB},
+     { "MX25V8035F", 0XC2, 0X20140000, 4096,  256, 0X38, 0X6B, 0XEB},
+
