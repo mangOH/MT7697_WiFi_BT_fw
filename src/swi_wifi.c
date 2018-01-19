@@ -1124,6 +1124,7 @@ static int32_t swi_wifi_proc_set_radio_state_req(swi_m2s_info_t* m2s_info)
 {
     uint32_t state = 0;
     int32_t ret = 0;
+    uint8_t on_off;
     uint8_t opmode;
 
     mt7697_set_radio_state_rsp_t* rsp = (mt7697_set_radio_state_rsp_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
@@ -1167,12 +1168,20 @@ static int32_t swi_wifi_proc_set_radio_state_req(swi_m2s_info_t* m2s_info)
 	goto cleanup;
     }
 
-    LOG_I(common, "set radio(%u)", state);
-    ret = wifi_config_set_radio(state);
+    ret = wifi_config_get_radio(&on_off);
     if (ret < 0) {
-	LOG_W(common, "wifi_config_set_radio() failed(%d)", ret);
+	LOG_W(common, "wifi_config_get_radio() failed(%d)", ret);
 	goto cleanup;
-    }	
+    }
+
+    if (on_off != state) {
+        LOG_I(common, "set radio(%u)", state);
+        ret = wifi_config_set_radio(state);
+        if (ret < 0) {
+	    LOG_W(common, "wifi_config_set_radio() failed(%d)", ret);
+	    goto cleanup;
+        }	
+    }
 
 cleanup:
     if (rsp) {
