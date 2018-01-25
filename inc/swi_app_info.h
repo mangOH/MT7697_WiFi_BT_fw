@@ -6,9 +6,9 @@
 
 typedef struct _swi_app_info_t {
     union {
-        swi_spi_queue_info_t	spi;
-        swi_uart_info_t         uart;
+        swi_spi_queue_info_t spi;
+        swi_uart_info_t      uart;
     } itf;
 } swi_app_info_t;
 
-#endif
+#endif // SWI_APP_INFO_H
