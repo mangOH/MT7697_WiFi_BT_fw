@@ -180,7 +180,6 @@ static int32_t swi_wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32
         ind->rsp.cmd.grp = MT7697_CMD_GRP_80211;
         ind->rsp.cmd.type = MT7697_CMD_SCAN_COMPLETE_IND;
         ind->if_idx = wifi_info.if_idx;
-	wifi_info.if_idx = (uint16_t)-1;
 
         ind->rsp.result = ret;
         LOG_I(common, "<-- SCAN COMPLETE IND if idx(%u) len(%u) result(%d)", ind->if_idx, ind->rsp.cmd.len, ret);
@@ -243,11 +242,13 @@ static int32_t swi_wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32
     }
     case WIFI_EVENT_IOT_DISCONNECTED:
     {
+        uint8_t empty_bssid[WIFI_MAC_ADDRESS_LENGTH] = {0};
+
 	LOG_I(common, "==> DISCONNECTED\n");
 	if (wifi_info.netif) netif_set_link_down(wifi_info.netif);
 
 	LOG_HEXDUMP_I(common, "MAC", payload, length);
-	if (wifi_info.if_idx != (uint16_t)-1) {
+        if (memcmp(payload, empty_bssid, WIFI_MAC_ADDRESS_LENGTH)) {
 	    mt7697_disconnect_ind_t* ind = (mt7697_disconnect_ind_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
                                                                                             SWI_MEM_POOL_MSG_HI_PRIORITY,
                                                                                             wifi_info.s2m_info->sendQ,
@@ -262,7 +263,6 @@ static int32_t swi_wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32
             ind->rsp.cmd.grp = MT7697_CMD_GRP_80211;
             ind->rsp.cmd.type = MT7697_CMD_DISCONNECT_IND;
             ind->if_idx = wifi_info.if_idx;
-	    wifi_info.if_idx = (uint16_t)-1;
 	
 	    if ((length >= WIFI_MAC_ADDRESS_LENGTH) && payload)   
 	        memcpy(ind->bssid, payload, WIFI_MAC_ADDRESS_LENGTH);
@@ -277,7 +277,7 @@ static int32_t swi_wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32
                 free(ind);
                 goto cleanup;
             }
-	}
+        }
 
 	break;
     }
@@ -296,11 +296,13 @@ cleanup:
 
 static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
 {
+    uint8_t passphrase[WIFI_LENGTH_PASSPHRASE + 1] = {0};
     uint8_t empty_pmk[WIFI_LENGTH_PASSPHRASE] = {0};
     uint8_t pmk[WIFI_LENGTH_PASSPHRASE + 1] = {0};
     size_t words_read;
     uint32_t port;
     int32_t ret = 0;
+    uint8_t passphrase_length;
 
     mt7697_set_pmk_rsp_t* rsp = (mt7697_set_pmk_rsp_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
                                                                               SWI_MEM_POOL_MSG_HI_PRIORITY,
@@ -345,27 +347,38 @@ static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
 	goto cleanup;
     }
 
-    if (memcmp(pmk, empty_pmk, WIFI_LENGTH_PMK)) {
-    	ret = wifi_config_set_wpa_psk_key(port, pmk, WIFI_LENGTH_PASSPHRASE);
-    	if (ret < 0) {
-	    LOG_W(common, "wifi_config_set_pmk() failed(%d)", ret);
-	    goto cleanup;
-        }
+    ret = wifi_config_get_wpa_psk_key(port, passphrase, &passphrase_length);
+    if (ret < 0) {
+	LOG_W(common, "wifi_config_get_wpa_psk_key() failed(%d)", ret);
+	goto cleanup;
+    }
+    LOG_I(common, "Curr PMK ('%s')", passphrase);
 
-	if (port == WIFI_PORT_AP) {
-	    ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_WPA2_PSK , WIFI_ENCRYPT_TYPE_AES_ENABLED);
+    if (memcmp(pmk, passphrase, WIFI_LENGTH_PASSPHRASE)) {
+        if (memcmp(pmk, empty_pmk, WIFI_LENGTH_PASSPHRASE)) {
+    	    ret = wifi_config_set_wpa_psk_key(port, pmk, WIFI_LENGTH_PASSPHRASE);
+    	    if (ret < 0) {
+	        LOG_W(common, "wifi_config_set_wpa_psk_key() failed(%d)", ret);
+	        goto cleanup;
+            }
+
+	    if (port == WIFI_PORT_AP) {
+	        ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_WPA2_PSK , WIFI_ENCRYPT_TYPE_AES_ENABLED);
+                if (ret < 0) {
+	            LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
+	            goto cleanup;
+                }
+	    }
+        }
+        else {
+	    ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_OPEN, WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED);
             if (ret < 0) {
 	        LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
 	        goto cleanup;
             }
-	}
-    }
-    else {
-	ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_OPEN, WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED);
-        if (ret < 0) {
-	    LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
-	    goto cleanup;
         }
+
+        wifi_info.reload = true;
     }
 
 cleanup:
@@ -438,8 +451,6 @@ static int32_t swi_wifi_proc_set_channel_req(swi_m2s_info_t* m2s_info)
     }
 
     if (wifi_info.channel != ch) {
-        wifi_info.channel = ch;
-
         LOG_I(common, "channel port(%d)", port);
         if (!swi_wifi_validate_port(port)) {
 	    LOG_W(common, "invalid port(%d)", port);
@@ -451,7 +462,9 @@ static int32_t swi_wifi_proc_set_channel_req(swi_m2s_info_t* m2s_info)
         if (ret < 0) {
 	    LOG_W(common, "wifi_config_set_channel() failed(%d)", ret);
 	    goto cleanup;
-       }
+        }
+
+        wifi_info.channel = ch;
     }
 
 cleanup:
@@ -604,6 +617,8 @@ static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info)
 	    LOG_W(common, "wifi_config_set_ssid() failed(%d)", ret);
 	    goto cleanup;
         }
+
+        wifi_info.reload = true;
     }
 
 cleanup:
@@ -656,10 +671,15 @@ static int32_t swi_wifi_proc_reload_settings_req(swi_m2s_info_t* m2s_info)
     LOG_I(common, "if idx(%d)", if_idx);
     wifi_info.if_idx = if_idx;
 
-    ret = wifi_config_reload_setting();
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_reload_setting() failed(%d)", ret);
-	goto cleanup;
+    LOG_I(common, "reload(%d)", wifi_info.reload);
+    if (wifi_info.reload) {
+        ret = wifi_config_reload_setting();
+        if (ret < 0) {
+	    LOG_W(common, "wifi_config_reload_setting() failed(%d)", ret);
+	    goto cleanup;
+        }
+
+        wifi_info.reload = false;
     }
 
 cleanup:
@@ -1061,142 +1081,6 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_get_radio_state_req(swi_m2s_info_t* m2s_info)
-{
-    int32_t ret = 0;
-    uint8_t opmode;
-
-    mt7697_get_radio_state_rsp_t* rsp = (mt7697_get_radio_state_rsp_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
-                                                                                              SWI_MEM_POOL_MSG_HI_PRIORITY,
-                                                                                              wifi_info.s2m_info->sendQ,
-                                                                                              LEN32_ALIGNED(sizeof(mt7697_get_radio_state_rsp_t)));
-    if (!rsp) {
-	LOG_W(common, "swi_mem_pool_alloc_msg() failed");
-        ret = -1;
-	goto cleanup;
-    }
-
-    rsp->rsp.cmd.len = sizeof(mt7697_get_radio_state_rsp_t);
-    rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
-    rsp->rsp.cmd.type = MT7697_CMD_GET_RADIO_STATE_RSP;
-
-    LOG_I(common, "--> GET RADIO STATE(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_get_radio_state_req_t)) {
-        LOG_W(common, "invalid get radio state req len(%u != %u)", m2s_info->cmd_hdr.len, sizeof(mt7697_get_radio_state_req_t));
-	ret = -1;
-	goto cleanup;
-    }
-
-    ret = wifi_config_get_opmode(&opmode);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_get_opmode() failed(%d)", ret);
-	goto cleanup;
-    }
-    LOG_I(common, "opmode(%u)", opmode);
-
-    if (opmode == WIFI_MODE_STA_ONLY) {
-        uint8_t state;
-	ret = wifi_config_get_radio(&state);
-	if (ret < 0) {
-	    LOG_W(common, "wifi_config_get_radio() failed(%d)", ret);
-	    goto cleanup;
-        }
-		
-	rsp->state = state;
-	LOG_I(common, "radio state(%u)", rsp->state);
-    }
-
-cleanup:
-    if (rsp) {
-        rsp->rsp.result = ret;
-        LOG_I(common, "<-- GET RADIO STATE rsp len(%u) result(%d)", rsp->rsp.cmd.len, ret);
-        int32_t err = swi_s2m_send_req(wifi_info.s2m_info, (mt7697_rsp_hdr_t*)rsp);
-        if (err < 0) {
-            LOG_W(common, "swi_s2m_send_req() failed(%d)", err);
-            ret = ret ? ret:err;
-        }
-    }
-
-    return ret;
-}
-
-static int32_t swi_wifi_proc_set_radio_state_req(swi_m2s_info_t* m2s_info)
-{
-    uint32_t state = 0;
-    int32_t ret = 0;
-    uint8_t on_off;
-    uint8_t opmode;
-
-    mt7697_set_radio_state_rsp_t* rsp = (mt7697_set_radio_state_rsp_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
-                                                                                              SWI_MEM_POOL_MSG_HI_PRIORITY,
-                                                                                              wifi_info.s2m_info->sendQ,
-                                                                                              LEN32_ALIGNED(sizeof(mt7697_set_radio_state_rsp_t)));
-    if (!rsp) {
-	LOG_W(common, "swi_mem_pool_alloc_msg() failed");
-        ret = -1;
-	goto cleanup;
-    }
-
-    rsp->cmd.len = sizeof(mt7697_set_radio_state_rsp_t);
-    rsp->cmd.grp = MT7697_CMD_GRP_80211;
-    rsp->cmd.type = MT7697_CMD_SET_RADIO_STATE_RSP;
-
-    LOG_I(common, "--> SET RADIO STATE(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_radio_state_req_t)) {
-        LOG_W(common, "invalid radio set state req len(%u != %u)", m2s_info->cmd_hdr.len, sizeof(mt7697_set_radio_state_req_t));
-	ret = -1;
-	goto cleanup;
-    }
-
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&state, LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-	ret = -1;
-	goto cleanup;
-    }
-
-    ret = wifi_config_get_opmode(&opmode);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_get_opmode() failed(%d)", ret);
-	goto cleanup;
-    }
-    LOG_I(common, "opmode(%u)", opmode);
-
-    if (opmode != WIFI_MODE_STA_ONLY) {
-        LOG_W(common, "invalid op mode set radio state failed");
-	ret = -1;
-	goto cleanup;
-    }
-
-    ret = wifi_config_get_radio(&on_off);
-    if (ret < 0) {
-	LOG_W(common, "wifi_config_get_radio() failed(%d)", ret);
-	goto cleanup;
-    }
-
-    if (on_off != state) {
-        LOG_I(common, "set radio(%u)", state);
-        ret = wifi_config_set_radio(state);
-        if (ret < 0) {
-	    LOG_W(common, "wifi_config_set_radio() failed(%d)", ret);
-	    goto cleanup;
-        }	
-    }
-
-cleanup:
-    if (rsp) {
-        rsp->result = ret;
-        LOG_I(common, "<-- SET RADIO STATE rsp len(%u) result(%d)", rsp->cmd.len, ret);
-        int32_t err = swi_s2m_send_req(wifi_info.s2m_info, (mt7697_rsp_hdr_t*)rsp);
-        if (err < 0) {
-            LOG_W(common, "swi_s2m_send_req() failed(%d)", err);
-            ret = ret ? ret:err;
-        }
-    }
-
-    return ret;
-}
-
 static int32_t swi_wifi_proc_get_listen_interval_req(swi_m2s_info_t* m2s_info)
 {
     int32_t ret = 0;
@@ -1421,7 +1305,7 @@ static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info)
 	ret = -1;
 	goto cleanup;
     }
-    LOG_I(common, "auth mode curr/set(%d), encrypt type curr/set(%d)", 
+    LOG_I(common, "auth mode curr/set(%d/%d), encrypt type curr/set(%d/%d)", 
         curr_auth_mode, auth_mode, curr_encrypt_type, encrypt_type);
 
     ret = wifi_config_get_security_mode(port, &curr_auth_mode, &curr_encrypt_type);
@@ -1436,6 +1320,8 @@ static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info)
 	    LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
 	    goto cleanup;
         }
+
+        wifi_info.reload = true;
     }
 
 cleanup:
@@ -1606,7 +1492,6 @@ static int32_t swi_wifi_proc_disconnect_req(swi_m2s_info_t* m2s_info)
 	goto cleanup;
     }
 
-    wifi_info.if_idx = (uint16_t)-1;
     if (port == WIFI_PORT_AP) {
 	LOG_HEXDUMP_I(common, "BSSID", addr, WIFI_MAC_ADDRESS_LENGTH);
 	ret = wifi_connection_disconnect_sta(addr);
@@ -1622,6 +1507,8 @@ static int32_t swi_wifi_proc_disconnect_req(swi_m2s_info_t* m2s_info)
 	    goto cleanup;
 	}
     }	
+
+    wifi_info.reload = false;
 
 cleanup:
     if (rsp) {	
@@ -1762,22 +1649,6 @@ int32_t swi_wifi_proc_cmd(swi_m2s_info_t* m2s_info)
 
 	break;
 
-    case MT7697_CMD_GET_RADIO_STATE_REQ:
-	ret = swi_wifi_proc_get_radio_state_req(m2s_info);
-	if (ret) {
-	    LOG_W(common, "swi_wifi_proc_get_radio_state_req() failed(%d)", ret);
-	}
-
-	break;
-
-    case MT7697_CMD_SET_RADIO_STATE_REQ:
-	ret = swi_wifi_proc_set_radio_state_req(m2s_info);
-	if (ret) {
-	    LOG_W(common, "swi_wifi_proc_set_radio_state_req failed(%d)", ret);
-	}
-
-	break;
-
     case MT7697_CMD_GET_LISTEN_INTERVAL_REQ:
 	ret = swi_wifi_proc_get_listen_interval_req(m2s_info);
 	if (ret) {
@@ -1913,6 +1784,7 @@ int32_t swi_wifi_init(swi_s2m_info_t* s2m_info)
     }
 
     wifi_info.s2m_info = s2m_info;
+    wifi_info.reload = false;
 
 cleanup:
     return ret;

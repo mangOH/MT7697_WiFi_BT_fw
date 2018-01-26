@@ -14,13 +14,11 @@
 #define MT7697_PIN_LEN				8
 
 #define mt7697_cfg_req_t			mt7697_cmd_hdr_t
-#define mt7697_get_radio_state_req_t		mt7697_cmd_hdr_t
 #define mt7697_get_rx_filter_req_t		mt7697_cmd_hdr_t
 #define mt7697_get_listen_interval_req_t	mt7697_cmd_hdr_t
 #define mt7697_scan_stop_t			mt7697_cmd_hdr_t
 
 #define mt7697_set_wireless_mode_rsp_t		mt7697_rsp_hdr_t
-#define mt7697_set_radio_state_rsp_t		mt7697_rsp_hdr_t
 #define mt7697_set_op_mode_rsp_t		mt7697_rsp_hdr_t
 #define mt7697_set_listen_interval_rsp_t	mt7697_rsp_hdr_t
 #define mt7697_set_pmk_rsp_t			mt7697_rsp_hdr_t
@@ -43,10 +41,6 @@ typedef enum _mt7697_wifi_cmd_types_e {
 	MT7697_CMD_SET_WIRELESS_MODE_RSP,
 	MT7697_CMD_SET_OP_MODE_REQ,
 	MT7697_CMD_SET_OP_MODE_RSP,
-	MT7697_CMD_GET_RADIO_STATE_REQ,
-	MT7697_CMD_GET_RADIO_STATE_RSP,
-	MT7697_CMD_SET_RADIO_STATE_REQ,
-	MT7697_CMD_SET_RADIO_STATE_RSP,
 	MT7697_CMD_GET_LISTEN_INTERVAL_REQ,
 	MT7697_CMD_GET_LISTEN_INTERVAL_RSP,
 	MT7697_CMD_SET_LISTEN_INTERVAL_REQ,
@@ -248,6 +242,7 @@ typedef struct _mt7697_wifi_info_t {
         swi_s2m_info_t 			*s2m_info;
   	uint16_t			if_idx;
 	uint8_t 			channel;
+        uint8_t                         reload;
 } mt7697_wifi_info_t;
 
 int32_t swi_wifi_proc_cmd(swi_m2s_info_t*);

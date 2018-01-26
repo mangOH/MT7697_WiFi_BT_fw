@@ -161,7 +161,7 @@ int main(void)
     config_ext.sta_wep_key_index_present = 1;
     config_ext.sta_wep_key_index = wifi_config.sta_default_key_id;
     config_ext.sta_auto_connect_present = 1;
-    config_ext.sta_auto_connect = 1;
+    config_ext.sta_auto_connect = 0;
 
     memcpy(config.ap_config.password, wifi_config.ap_wpa_psk, 64);
     config.ap_config.password_length = wifi_config.ap_wpa_psk_len;
