@@ -74,166 +74,166 @@ typedef enum _mt7697_wifi_cmd_types_e {
 } mt7697_wifi_cmd_types_e;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_mac_addr_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			port;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         port;
 } mt7697_mac_addr_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_mac_addr_rsp_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint8_t 			addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+    mt7697_rsp_hdr_t rsp;
+    uint8_t          addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } mt7697_mac_addr_rsp_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_get_wireless_mode_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			port;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         port;
 } mt7697_get_wireless_mode_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_get_wireless_mode_rsp_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint32_t			mode;
+    mt7697_rsp_hdr_t rsp;
+    uint32_t         mode;
 } mt7697_get_wireless_mode_rsp_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_wireless_mode_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			port;
-	uint32_t			mode;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         port;
+    uint32_t         mode;
 } mt7697_set_wireless_mode_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_cfg_rsp_t {
-	mt7697_rsp_hdr_t		rsp;
-	wifi_config_t			cfg;
+    mt7697_rsp_hdr_t rsp;
+    wifi_config_t    cfg;
 } mt7697_cfg_rsp_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_op_mode_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			opmode;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         opmode;
 } mt7697_set_op_mode_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_get_radio_state_rsp_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint32_t			state;
+    mt7697_rsp_hdr_t rsp;
+    uint32_t         state;
 } mt7697_get_radio_state_rsp_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_radio_state_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			state;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         state;
 } mt7697_set_radio_state_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_get_listen_interval_rsp_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint32_t			interval;
+    mt7697_rsp_hdr_t rsp;
+    uint32_t         interval;
 } mt7697_get_listen_interval_rsp_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_listen_interval_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			interval;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         interval;
 } mt7697_set_listen_interval_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_reload_settings_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			if_idx;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         if_idx;
 } mt7697_reload_settings_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_scan_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t 			if_idx;
-	uint32_t			mode;
-	uint32_t			option;
-	uint32_t			bssid_len;
-	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
-	uint32_t			ssid_len;
-	uint8_t				ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         if_idx;
+    uint32_t         mode;
+    uint32_t         option;
+    uint32_t         bssid_len;
+    uint8_t          bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+    uint32_t         ssid_len;
+    uint8_t          ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
 } mt7697_scan_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_scan_rsp_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint32_t 			if_idx;
+    mt7697_rsp_hdr_t rsp;
+    uint32_t         if_idx;
 } mt7697_scan_rsp_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_scan_ind_t {
-	mt7697_rsp_hdr_t		rsp;
-	int32_t 			rssi;
-	uint32_t 			channel;
-	uint8_t				probe_rsp[];
+    mt7697_rsp_hdr_t rsp;
+    int32_t          rssi;
+    uint32_t         channel;
+    uint8_t          probe_rsp[];
 } mt7697_scan_ind_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_scan_complete_ind_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint32_t 			if_idx;
+    mt7697_rsp_hdr_t rsp;
+    uint32_t         if_idx;
 } mt7697_scan_complete_ind_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_pmk_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			port;
-	uint8_t				pmk[LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         port;
+    uint8_t          pmk[LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
 } mt7697_set_pmk_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_channel_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			port;
-	uint32_t			ch;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         port;
+    uint32_t         ch;
 } mt7697_set_channel_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_bssid_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+    mt7697_cmd_hdr_t cmd;
+    uint8_t          bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } mt7697_set_bssid_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_ssid_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			port;
-	uint32_t			len;
-	uint8_t				ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         port;
+    uint32_t         len;
+    uint8_t          ssid[LEN32_ALIGNED(WIFI_MAX_LENGTH_OF_SSID)];
 } mt7697_set_ssid_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_security_mode_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			port;
-	uint32_t			auth_mode;
-	uint32_t			encrypt_type;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         port;
+    uint32_t         auth_mode;
+    uint32_t         encrypt_type;
 } mt7697_set_security_mode_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_get_security_mode_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t 			if_idx;
-	uint32_t			port;
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         if_idx;
+    uint32_t         port;
 } mt7697_get_security_mode_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_get_security_mode_rsp_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint32_t 			if_idx;
-	uint32_t			auth_mode;
-	uint32_t			encrypt_type;
+    mt7697_rsp_hdr_t rsp;
+    uint32_t         if_idx;
+    uint32_t         auth_mode;
+    uint32_t         encrypt_type;
 } mt7697_get_security_mode_rsp_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_connect_ind_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint32_t 			if_idx;
-	uint32_t			channel;
-	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+    mt7697_rsp_hdr_t rsp;
+    uint32_t         if_idx;
+    uint32_t         channel;
+    uint8_t          bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } mt7697_connect_ind_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_disconnect_req_t {
-	mt7697_cmd_hdr_t		cmd;
-	uint32_t			port;
-	uint8_t				addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         port;
+    uint8_t          addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } mt7697_disconnect_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_disconnect_ind_t {
-	mt7697_rsp_hdr_t		rsp;
-	uint32_t 			if_idx;
-	uint8_t				bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
+    mt7697_rsp_hdr_t rsp;
+    uint32_t         if_idx;
+    uint8_t          bssid[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
 } mt7697_disconnect_ind_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_tx_raw_packet_t {
-   	mt7697_cmd_hdr_t		cmd;
-	uint32_t 			len;
-	uint8_t				data[LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
+    mt7697_cmd_hdr_t cmd;
+    uint32_t         len;
+    uint8_t          data[LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
 } mt7697_tx_raw_packet_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_rx_raw_packet_t {
-   	mt7697_rsp_hdr_t		hdr;
-	uint8_t				data[];
+    mt7697_rsp_hdr_t hdr;
+    uint8_t          data[];
 } mt7697_rx_raw_packet_t;
 
 typedef struct _mt7697_wifi_info_t {
@@ -248,4 +248,4 @@ typedef struct _mt7697_wifi_info_t {
 int32_t swi_wifi_proc_cmd(swi_m2s_info_t*);
 int32_t swi_wifi_init(swi_s2m_info_t*);
 
-#endif
+#endif // SWI_WIFI_H
