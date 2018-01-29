@@ -248,15 +248,14 @@ static int32_t swi_wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32
     {
         uint8_t empty_bssid[WIFI_MAC_ADDRESS_LENGTH] = {0};
 
-	LOG_I(common, "==> DISCONNECTED\n");
-	if (wifi_info.netif) netif_set_link_down(wifi_info.netif);
+        LOG_I(common, "==> DISCONNECTED\n");
+        if (wifi_info.netif) netif_set_link_down(wifi_info.netif);
 
-	LOG_HEXDUMP_I(common, "MAC", payload, length);
+        LOG_HEXDUMP_I(common, "MAC", payload, length);
         if (memcmp(payload, empty_bssid, WIFI_MAC_ADDRESS_LENGTH)) {
-	    mt7697_disconnect_ind_t* ind = (mt7697_disconnect_ind_t*)swi_mem_pool_alloc_msg(&wifi_info.s2m_info->msg_pool_info,
-                                                                                            SWI_MEM_POOL_MSG_HI_PRIORITY,
-                                                                                            wifi_info.s2m_info->sendQ,
-                                                                                            LEN32_ALIGNED(sizeof(mt7697_disconnect_ind_t)));
+            mt7697_disconnect_ind_t* ind = (mt7697_disconnect_ind_t*)swi_mem_pool_alloc_msg(
+                &wifi_info.s2m_info->msg_pool_info, SWI_MEM_POOL_MSG_HI_PRIORITY,
+                wifi_info.s2m_info->sendQ, LEN32_ALIGNED(sizeof(mt7697_disconnect_ind_t)));
             if (!ind) {
                 LOG_W(common, "swi_mem_pool_alloc_msg() failed");
                 ret = -1;
@@ -267,11 +266,11 @@ static int32_t swi_wifi_event_hndlr(wifi_event_t event, uint8_t* payload, uint32
             ind->rsp.cmd.grp = MT7697_CMD_GRP_80211;
             ind->rsp.cmd.type = MT7697_CMD_DISCONNECT_IND;
             ind->if_idx = wifi_info.if_idx;
-	
-	    if ((length >= WIFI_MAC_ADDRESS_LENGTH) && payload)   
-	        memcpy(ind->bssid, payload, WIFI_MAC_ADDRESS_LENGTH);
-	    else 
-	        memset(ind->bssid, 0, WIFI_MAC_ADDRESS_LENGTH);
+
+            if ((length >= WIFI_MAC_ADDRESS_LENGTH) && payload)
+                memcpy(ind->bssid, payload, WIFI_MAC_ADDRESS_LENGTH);
+            else
+                memset(ind->bssid, 0, WIFI_MAC_ADDRESS_LENGTH);
 
             ind->rsp.result = ret;
             LOG_I(common, "<-- DISCONNECT IND len(%u) result(%d)", ind->rsp.cmd.len, ret);
@@ -356,29 +355,29 @@ static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
 
     ret = wifi_config_get_wpa_psk_key(port, passphrase, &passphrase_length);
     if (ret < 0) {
-	LOG_W(common, "wifi_config_get_wpa_psk_key() failed(%d)", ret);
-	goto cleanup;
+        LOG_W(common, "wifi_config_get_wpa_psk_key() failed(%d)", ret);
+        goto cleanup;
     }
     LOG_I(common, "Curr PMK ('%s')", passphrase);
 
     if (memcmp(pmk, passphrase, WIFI_LENGTH_PASSPHRASE)) {
         if (memcmp(pmk, empty_pmk, WIFI_LENGTH_PASSPHRASE)) {
-    	    ret = wifi_config_set_wpa_psk_key(port, pmk, WIFI_LENGTH_PASSPHRASE);
-    	    if (ret < 0) {
-	        LOG_W(common, "wifi_config_set_wpa_psk_key() failed(%d)", ret);
-	        goto cleanup;
+            ret = wifi_config_set_wpa_psk_key(port, pmk, WIFI_LENGTH_PASSPHRASE);
+            if (ret < 0) {
+                LOG_W(common, "wifi_config_set_wpa_psk_key() failed(%d)", ret);
+                goto cleanup;
             }
 
-	    if (port == WIFI_PORT_AP) {
-	        ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_WPA2_PSK , WIFI_ENCRYPT_TYPE_AES_ENABLED);
+            if (port == WIFI_PORT_AP) {
+                ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_WPA2_PSK , WIFI_ENCRYPT_TYPE_AES_ENABLED);
                 if (ret < 0) {
-	            LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
-	            goto cleanup;
+                    LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
+                    goto cleanup;
                 }
-	    }
+            }
         }
         else {
-	    ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_OPEN, WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED);
+            ret = wifi_config_set_security_mode(port, WIFI_AUTH_MODE_OPEN, WIFI_ENCRYPT_TYPE_ENCRYPT_DISABLED);
             if (ret < 0) {
                 LOG_W(common, "wifi_config_set_security_mode() failed(%d)", ret);
                 goto cleanup;
@@ -469,8 +468,8 @@ static int32_t swi_wifi_proc_set_channel_req(swi_m2s_info_t* m2s_info)
 
         ret = wifi_config_set_channel(port, (uint8_t)ch);
         if (ret < 0) {
-	    LOG_W(common, "wifi_config_set_channel() failed(%d)", ret);
-	    goto cleanup;
+            LOG_W(common, "wifi_config_set_channel() failed(%d)", ret);
+            goto cleanup;
         }
 
         wifi_info.channel = ch;
@@ -691,8 +690,8 @@ static int32_t swi_wifi_proc_reload_settings_req(swi_m2s_info_t* m2s_info)
     if (wifi_info.reload) {
         ret = wifi_config_reload_setting();
         if (ret < 0) {
-	    LOG_W(common, "wifi_config_reload_setting() failed(%d)", ret);
-	    goto cleanup;
+            LOG_W(common, "wifi_config_reload_setting() failed(%d)", ret);
+            goto cleanup;
         }
 
         wifi_info.reload = false;
@@ -1347,7 +1346,7 @@ static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info)
         ret = -1;
         goto cleanup;
     }
-    LOG_I(common, "auth mode curr/set(%d/%d), encrypt type curr/set(%d/%d)", 
+    LOG_I(common, "auth mode curr/set(%d/%d), encrypt type curr/set(%d/%d)",
         curr_auth_mode, auth_mode, curr_encrypt_type, encrypt_type);
 
     ret = wifi_config_get_security_mode(port, &curr_auth_mode, &curr_encrypt_type);

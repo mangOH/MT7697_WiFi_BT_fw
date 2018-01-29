@@ -167,11 +167,11 @@ size_t swi_uart_send(void* wr_hndl, const uint32_t* buff, size_t len)
         EventBits_t uxBits = xEventGroupSetBits(uart_info->s2m.evt_grp, SWI_S2M_BLOCKED_WRITER);
 //        configASSERT(uxBits & SWI_S2M_BLOCKED_WRITER);
 
-	uxBits = xEventGroupWaitBits(uart_info->s2m.evt_grp, SWI_S2M_UNBLOCK_WRITER, pdTRUE, pdTRUE, portMAX_DELAY);
-//	configASSERT(uxBits & SWI_S2M_BLOCKED_WRITER);
+        uxBits = xEventGroupWaitBits(uart_info->s2m.evt_grp, SWI_S2M_UNBLOCK_WRITER, pdTRUE, pdTRUE, portMAX_DELAY);
+//        configASSERT(uxBits & SWI_S2M_BLOCKED_WRITER);
 
-	uxBits = xEventGroupClearBits(uart_info->s2m.evt_grp, SWI_S2M_BLOCKED_WRITER);
-//	configASSERT(!(uxBits & SWI_S2M_UNBLOCK_WRITER));
+        uxBits = xEventGroupClearBits(uart_info->s2m.evt_grp, SWI_S2M_BLOCKED_WRITER);
+//        configASSERT(!(uxBits & SWI_S2M_UNBLOCK_WRITER));
     }
 
     return len;
@@ -196,11 +196,11 @@ size_t swi_uart_recv(void* rd_hndl, uint32_t* buff, size_t len)
         EventBits_t uxBits = xEventGroupSetBits(uart_info->m2s.evt_grp, SWI_M2S_BLOCKED_READER);
 //        configASSERT(uxBits & SWI_M2S_BLOCKED_READER);
 
-	uxBits = xEventGroupWaitBits(uart_info->m2s.evt_grp, SWI_M2S_UNBLOCK_READER, pdTRUE, pdTRUE, portMAX_DELAY);
-//	configASSERT(uxBits & SWI_M2S_BLOCKED_READER);
+        uxBits = xEventGroupWaitBits(uart_info->m2s.evt_grp, SWI_M2S_UNBLOCK_READER, pdTRUE, pdTRUE, portMAX_DELAY);
+//        configASSERT(uxBits & SWI_M2S_BLOCKED_READER);
 
-	uxBits = xEventGroupClearBits(uart_info->m2s.evt_grp, SWI_M2S_BLOCKED_READER);
-//	configASSERT(!(uxBits & SWI_M2S_UNBLOCK_READER));
+        uxBits = xEventGroupClearBits(uart_info->m2s.evt_grp, SWI_M2S_BLOCKED_READER);
+//        configASSERT(!(uxBits & SWI_M2S_UNBLOCK_READER));
     }
 
     return len;
