@@ -77,6 +77,7 @@ extern void tickless_init(void);
 #include "swi_spi_slave_queues.h"
 #include "swi_uart.h"
 #include "swi_wifi.h"
+#include "swi_version.h"
 
 swi_app_info_t app_info;
 
@@ -228,7 +229,7 @@ int main(void)
 #endif
 
 #endif
-    LOG_I(common, "run WiFi");
+    LOG_I(common, "Running SWI MTK7697 FW v%s-%s", SWI_VERSION_SDK, SWI_VERSION_FW);
     vTaskStartScheduler();
 
 cleanup:
