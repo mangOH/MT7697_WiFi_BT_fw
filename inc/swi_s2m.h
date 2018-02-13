@@ -5,7 +5,7 @@
 #include "event_groups.h"
 
 #include "swi_task_info.h"
-#include "swi_cmd_defs.h"
+#include "swi_messaging.h"
 #include "swi_mem_pool.h"
 
 #define SWI_S2M_BLOCKED_WRITER (1 << 0)

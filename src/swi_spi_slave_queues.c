@@ -25,10 +25,10 @@ static int32_t swi_spi_queue_notify_master(void);
 static void swi_spi_set_slave_to_master_mailbox(uint8_t);
 static void swi_spi_clear_master_to_slave_mailbox(uint8_t);
 
-static int32_t swi_spi_proc_queue_init_cmd(swi_m2s_info_t*);
-static int32_t swi_spi_proc_queue_unused_cmd(swi_m2s_info_t*);
-static int32_t swi_spi_proc_queue_reset_cmd(swi_m2s_info_t*);
-static int32_t swi_spi_proc_queue_cmd(swi_m2s_info_t*);
+
+static int32_t swi_spi_proc_queue_init_cmd(swi_m2s_info_t*, mt7697_cmd_hdr_t*);
+static int32_t swi_spi_proc_queue_unused_cmd(swi_m2s_info_t*, mt7697_cmd_hdr_t*);
+static int32_t swi_spi_proc_queue_reset_cmd(swi_m2s_info_t*, mt7697_cmd_hdr_t*);
 
 static void swi_spi_slave_interrupt_handler(void*);
 static void swi_spi_queue_m2s_task(void*);
@@ -51,6 +51,18 @@ swi_spi_queue_spec_t queues[NUM_CHANNELS] __attribute__((__section__(".spi_slave
         .read_offset = 0,
         .write_offset = 0,
     },
+};
+
+static const struct mt7697_command_entry mt7697_commands_queue[] = {
+    CREATE_CMD_ENTRY(MT7697_CMD_QUEUE_INIT,
+                     swi_spi_proc_queue_init_cmd,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_queue_init_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_QUEUE_UNUSED,
+                     swi_spi_proc_queue_unused_cmd,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_queue_unused_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_QUEUE_RESET,
+                     swi_spi_proc_queue_reset_cmd,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_queue_reset_req_t))),
 };
 
 static ssize_t swi_spi_circular_buffer_difference(uint32_t buffer_size, uint32_t from, uint32_t to)
@@ -105,28 +117,15 @@ static void swi_spi_clear_master_to_slave_mailbox(uint8_t bits)
 //    LOG_I(common, "bits(0x%02x) M2S mbox(0x%02x)", bits, *SPIS_REG_MAILBOX_M2S);
 }
 
-static int32_t swi_spi_proc_queue_init_cmd(swi_m2s_info_t* m2s_info)
+static int32_t swi_spi_proc_queue_init_cmd(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
+    mt7697_queue_init_req_t* init_cmd = (mt7697_queue_init_req_t*)cmd;
     mt7697_queue_init_rsp_t* rsp = NULL;
-    uint32_t m2s_ch, s2m_ch;
     int32_t ret = 0;
+    const uint8_t s2m_ch = init_cmd->s2m_ch;
+    const uint8_t m2s_ch = init_cmd->m2s_ch;
 
     LOG_I(common, "--> INIT QUEUE");
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&m2s_ch,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&s2m_ch,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
 
     ret = swi_mem_pool_init(&spi_queue_info->data[s2m_ch].dir.s2m.msg_pool_info.lo,
                             SWI_MSG_POOL_LEN, MT7697_IEEE80211_FRAME_LEN);
@@ -144,7 +143,8 @@ static int32_t swi_spi_proc_queue_init_cmd(swi_m2s_info_t* m2s_info)
 
     rsp = (mt7697_queue_init_rsp_t*)swi_mem_pool_alloc_msg(
         &spi_queue_info->data[s2m_ch].dir.s2m.msg_pool_info, SWI_MEM_POOL_MSG_HI_PRIORITY,
-        spi_queue_info->data[s2m_ch].dir.s2m.sendQ, LEN32_ALIGNED(sizeof(mt7697_queue_init_rsp_t)));
+        spi_queue_info->data[s2m_ch].dir.s2m.sendQ,
+        LEN32_ALIGNED(sizeof(mt7697_queue_init_rsp_t)));
     if (!rsp) {
         LOG_W(common, "swi_mem_pool_alloc_msg() failed");
         ret = -1;
@@ -174,27 +174,14 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_spi_proc_queue_unused_cmd(swi_m2s_info_t* m2s_info)
+static int32_t swi_spi_proc_queue_unused_cmd(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
-    uint32_t m2s_ch, s2m_ch;
+	mt7697_queue_unused_req_t* unused_cmd = (mt7697_queue_unused_req_t*)cmd;
     int32_t ret = 0;
+    const uint8_t m2s_ch = unused_cmd->m2s_ch;
+    const uint8_t s2m_ch = unused_cmd->s2m_ch;
 
     LOG_I(common, "--> UNUSED QUEUE");
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&m2s_ch,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&s2m_ch,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
 
     LOG_I(common, "unused queue(%u/%u)", m2s_ch, s2m_ch);
     spi_queue_info->data[m2s_ch].qs->flags &= ~BF_DEFINE(1, FLAGS_IN_USE_OFFSET,
@@ -202,32 +189,18 @@ static int32_t swi_spi_proc_queue_unused_cmd(swi_m2s_info_t* m2s_info)
     spi_queue_info->data[s2m_ch].qs->flags &= ~BF_DEFINE(1, FLAGS_IN_USE_OFFSET,
                                                          FLAGS_IN_USE_WIDTH);
 
-cleanup:
     return ret;
 }
 
-static int32_t swi_spi_proc_queue_reset_cmd(swi_m2s_info_t* m2s_info)
+static int32_t swi_spi_proc_queue_reset_cmd(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_queue_reset_req_t* reset_cmd = (mt7697_queue_reset_req_t*)cmd;
     mt7697_queue_reset_rsp_t* rsp = NULL;
-    uint32_t m2s_ch, s2m_ch;
     int32_t ret = 0;
+    const uint8_t m2s_ch = reset_cmd->m2s_ch;
+    const uint8_t s2m_ch = reset_cmd->s2m_ch;
 
     LOG_I(common, "--> RESET QUEUE");
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&m2s_ch,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&s2m_ch,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
 
     rsp = (mt7697_queue_reset_rsp_t*)swi_mem_pool_alloc_msg(
         &spi_queue_info->data[s2m_ch].dir.s2m.msg_pool_info, SWI_MEM_POOL_MSG_HI_PRIORITY,
@@ -275,44 +248,6 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_spi_proc_queue_cmd(swi_m2s_info_t* m2s_info)
-{
-    int32_t ret = 0;
-
-    switch (m2s_info->cmd_hdr.type) {
-    case MT7697_CMD_QUEUE_INIT:
-        ret = swi_spi_proc_queue_init_cmd(m2s_info);
-        if (ret < 0) {
-            LOG_W(common, "swi_spi_proc_queue_init_cmd() failed(%d)", ret);
-            goto cleanup;
-        }
-        break;
-
-    case MT7697_CMD_QUEUE_UNUSED:
-        ret = swi_spi_proc_queue_unused_cmd(m2s_info);
-        if (ret < 0) {
-            LOG_W(common, "swi_spi_proc_queue_unused_cmd() failed(%d)", ret);
-            goto cleanup;
-        }
-        break;
-
-    case MT7697_CMD_QUEUE_RESET:
-        ret = swi_spi_proc_queue_reset_cmd(m2s_info);
-        if (ret < 0) {
-            LOG_W(common, "swi_spi_proc_queue_reset_cmd() failed(%d)", ret);
-            goto cleanup;
-        }
-        break;
-
-    default:
-        LOG_W(common, "unhandled cmd(%d)", m2s_info->cmd_hdr.type);
-        ret = -1;
-        goto cleanup;
-    }
-
-cleanup:
-    return ret;
-}
 
 static size_t swi_spi_queue_write(void* wr_hndl, const uint32_t* buffer, size_t num_words)
 {
@@ -402,8 +337,11 @@ static int32_t swi_spi_queue_notify_master(void)
     return status;
 }
 
+
 static void swi_spi_queue_m2s_task(void *pvParameters)
 {
+	static uint8_t received_msg[sizeof(mt7697_tx_raw_packet_t)] __attribute__((aligned(4)));
+    mt7697_cmd_hdr_t *received_cmd = (mt7697_cmd_hdr_t *)received_msg;
     swi_m2s_info_t* m2s_info = (swi_m2s_info_t*)pvParameters;
     swi_spi_queue_data_t* spi_queue_data = (swi_spi_queue_data_t*)m2s_info->rd_hndl;
 
@@ -415,14 +353,13 @@ static void swi_spi_queue_m2s_task(void *pvParameters)
 
         size_t avail = swi_spi_get_num_words_in_queue(spi_queue_data->qs);
 //        LOG_I(common, "avail(%u)", avail);
-        while (((m2s_info->cmd_hdr.len) &&
-                (avail >= LEN_TO_WORD(m2s_info->cmd_hdr.len - sizeof(mt7697_cmd_hdr_t)))) ||
-               ((!m2s_info->cmd_hdr.len) &&
+        while (((received_cmd->len) &&
+                (avail >= LEN_TO_WORD(received_cmd->len - sizeof(mt7697_cmd_hdr_t)))) ||
+               ((!received_cmd->len) &&
                 (avail >= LEN_TO_WORD(sizeof(mt7697_cmd_hdr_t))))) {
-            if (!m2s_info->cmd_hdr.len) {
+            if (!received_cmd->len) {
                 size_t words_read = m2s_info->hw_read(
-                    spi_queue_data, (uint32_t*)&m2s_info->cmd_hdr,
-                    LEN_TO_WORD(sizeof(mt7697_cmd_hdr_t)));
+                    spi_queue_data, (uint32_t*)received_cmd, LEN_TO_WORD(sizeof(mt7697_cmd_hdr_t)));
                 if (words_read != LEN_TO_WORD(sizeof(mt7697_cmd_hdr_t))) {
                     LOG_W(common, "hw_read() failed(%d)", words_read);
                     break;
@@ -432,34 +369,47 @@ static void swi_spi_queue_m2s_task(void *pvParameters)
 //                LOG_I(common, "avail(%u)", avail);
             }
 
-//            LOG_I(common, "len(%u)", m2s_info->cmd_hdr.len);
-            if (avail < LEN_TO_WORD(m2s_info->cmd_hdr.len - sizeof(mt7697_cmd_hdr_t))) {
+//            LOG_I(common, "len(%u)", received_cmd->len);
+            if (avail < LEN_TO_WORD(received_cmd->len - sizeof(mt7697_cmd_hdr_t))) {
                 LOG_W(common, "queue need more data");
                 break;
             }
 
-            switch (m2s_info->cmd_hdr.grp) {
+            const size_t num_words_to_read =
+                LEN_TO_WORD(received_cmd->len - sizeof(mt7697_cmd_hdr_t));
+            const size_t num_words_read = m2s_info->hw_read(
+                spi_queue_data, (uint32_t *)(&received_msg[sizeof(mt7697_cmd_hdr_t)]),
+                num_words_to_read);
+            if (num_words_read != num_words_to_read) {
+                LOG_W(common, "hw_read() failed(%d)", num_words_read);
+                break;
+            }
+
+            switch (received_cmd->grp) {
             case MT7697_CMD_GRP_QUEUE:
-                ret = swi_spi_proc_queue_cmd(m2s_info);
+	            ret = swi_process_cmd(m2s_info, mt7697_commands_queue,
+	                                  ARRAY_SIZE(mt7697_commands_queue), received_cmd);
                 if (ret < 0) {
-                    LOG_W(common, "swi_spi_proc_queue_cmd() failed(%d)", ret);
+                    LOG_W(common, "Failure (%d) while processing a queue command", ret);
                 }
                 break;
 
             case MT7697_CMD_GRP_80211:
-                ret = swi_wifi_proc_cmd(m2s_info);
+	            ret = swi_process_cmd(m2s_info, mt7697_commands_wifi,
+	                                  mt7697_commands_wifi_count, received_cmd);
                 if (ret < 0) {
-                    LOG_W(common, "swi_wifi_proc_cmd() failed(%d)", ret);
+                    LOG_W(common, "Failure (%d) while processing a wifi command", ret);
                 }
                 break;
 
             case MT7697_CMD_GRP_BT:
+            case MT7697_CMD_GRP_UART:
             default:
-                LOG_W(common, "invalid cmd grp(%d)", m2s_info->cmd_hdr.grp);
+                LOG_W(common, "invalid cmd grp(%d)", received_cmd->grp);
                 break;
             }
 
-            m2s_info->cmd_hdr.len = 0;
+            received_cmd->len = 0;
             avail = swi_spi_get_num_words_in_queue(spi_queue_data->qs);
 //            LOG_I(common, "avail(%u)", avail);
         }

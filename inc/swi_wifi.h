@@ -4,7 +4,7 @@
 // WIFI
 #include <wifi_api.h>
 
-#include "swi_cmd_defs.h"
+#include "swi_messaging.h"
 #include "swi_mem_pool.h"
 #include "swi_m2s.h"
 #include "swi_s2m.h"
@@ -16,7 +16,7 @@
 #define mt7697_cfg_req_t                 mt7697_cmd_hdr_t
 #define mt7697_get_rx_filter_req_t       mt7697_cmd_hdr_t
 #define mt7697_get_listen_interval_req_t mt7697_cmd_hdr_t
-#define mt7697_scan_stop_t               mt7697_cmd_hdr_t
+#define mt7697_scan_stop_req_t           mt7697_cmd_hdr_t
 
 #define mt7697_set_wireless_mode_rsp_t   mt7697_rsp_hdr_t
 #define mt7697_set_op_mode_rsp_t         mt7697_rsp_hdr_t
@@ -165,7 +165,9 @@ typedef struct __attribute__((packed, aligned(4))) _mt7697_scan_complete_ind_t {
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_pmk_req_t {
     mt7697_cmd_hdr_t cmd;
     uint32_t         port;
-    uint8_t          pmk[LEN32_ALIGNED(WIFI_LENGTH_PASSPHRASE)];
+    // The PMK is transmitted encoded as ASCII hex without a null terminator so that is why the
+    // length must be multiplied by 2.
+    uint8_t          pmk[LEN32_ALIGNED(WIFI_LENGTH_PMK * 2)];
 } mt7697_set_pmk_req_t;
 
 typedef struct __attribute__((packed, aligned(4))) _mt7697_set_channel_req_t {
@@ -237,7 +239,6 @@ typedef struct __attribute__((packed, aligned(4))) _mt7697_rx_raw_packet_t {
 } mt7697_rx_raw_packet_t;
 
 typedef struct _mt7697_wifi_info_t {
-    uint8_t        tx_data[LEN32_ALIGNED(MT7697_IEEE80211_FRAME_LEN)];
     struct netif   *netif;
     swi_s2m_info_t *s2m_info;
     uint16_t       if_idx;
@@ -247,5 +248,8 @@ typedef struct _mt7697_wifi_info_t {
 
 int32_t swi_wifi_proc_cmd(swi_m2s_info_t*);
 int32_t swi_wifi_init(swi_s2m_info_t*);
+
+extern const struct mt7697_command_entry mt7697_commands_wifi[];
+extern const size_t mt7697_commands_wifi_count;
 
 #endif // SWI_WIFI_H

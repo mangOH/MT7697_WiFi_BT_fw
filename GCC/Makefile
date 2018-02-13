@@ -174,10 +174,11 @@ APP_FILES       = $(APP_PATH_SRC)/main.c     \
                   $(APP_PATH_SRC)/ut_app/connection_info.c \
                   $(APP_PATH_SRC)/ut_app/gatt_service.c \
                   $(APP_PATH_SRC)/ut_app/gatt_command.c \
-	          $(APP_PATH_SRC)/swi_mem_pool.c \
-		  $(APP_PATH_SRC)/swi_s2m.c \
-		  $(APP_PATH_SRC)/swi_m2s.c \
+                  $(APP_PATH_SRC)/swi_mem_pool.c \
+                  $(APP_PATH_SRC)/swi_s2m.c \
+                  $(APP_PATH_SRC)/swi_m2s.c \
                   $(APP_PATH_SRC)/swi_wifi.c \
+                  $(APP_PATH_SRC)/swi_messaging.c \
                   $(APP_PATH)/GCC/syscalls.c \
                   driver/board/mt76x7_hdk/util/src/io_def.c
 

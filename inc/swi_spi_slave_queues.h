@@ -8,9 +8,8 @@
 
 #include "swi_s2m.h"
 #include "swi_m2s.h"
-#include "swi_cmd_defs.h"
+#include "swi_messaging.h"
 
-#define ARRAY_SIZE(_a_) (sizeof(_a_) / sizeof(_a_[0]))
 
 // --> BEGIN SPI Slave Hardware Defines
 // Register pointer macro

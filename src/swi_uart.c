@@ -3,14 +3,27 @@
 
 #include "swi_wifi.h"
 #include "swi_uart.h"
+/*
+ * TODO: it shouldn't be necessary to include this header file. Everything related to general
+ * command processing should be extracted into a new pair of .c/.h files.
+ */
+#include "swi_spi_slave_queues.h"
 
 static void swi_uart_callback(hal_uart_callback_event_t, void*);
 static void swi_uart_m2s_task(void*);
+
+static int32_t swi_uart_proc_shutdown_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
 
 static uint8_t rx_vfifo_buffer[SWI_UART_RX_VFIFO_SIZE] \
     __attribute__ ((aligned(4), section(".noncached_zidata")));
 static uint8_t tx_vfifo_buffer[SWI_UART_TX_VFIFO_SIZE] \
     __attribute__ ((aligned(4), section(".noncached_zidata")));
+
+static const struct mt7697_command_entry mt7697_commands_uart[] = {
+	CREATE_CMD_ENTRY(MT7697_CMD_UART_SHUTDOWN_REQ,
+	                 swi_uart_proc_shutdown_req,
+	                 CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_uart_shutdown_req_t))),
+};
 
 static void swi_uart_callback(hal_uart_callback_event_t status, void *user_data)
 {
@@ -45,7 +58,7 @@ static void swi_uart_callback(hal_uart_callback_event_t status, void *user_data)
     }
 }
 
-static int32_t swi_uart_proc_shutdown_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_uart_proc_shutdown_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
     swi_uart_info_t* uart_info = container_of(m2s_info, swi_uart_info_t, m2s);
     int32_t ret = 0;
@@ -63,13 +76,7 @@ static int32_t swi_uart_proc_shutdown_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_UART;
     rsp->cmd.type = MT7697_CMD_UART_SHUTDOWN_RSP;
 
-    LOG_I(common, "--> UART SHUTDOWN(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_uart_shutdown_req_t)) {
-        LOG_W(common, "invalid UART SHUTDOWN req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_uart_shutdown_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> UART SHUTDOWN(%d)", cmd->len);
 
 cleanup:
     if (rsp) {
@@ -85,64 +92,56 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_uart_proc_cmd(swi_m2s_info_t* m2s_info)
-{
-    int32_t ret = 0;
-
-    switch (m2s_info->cmd_hdr.type) {
-    case MT7697_CMD_UART_SHUTDOWN_REQ:
-        ret = swi_uart_proc_shutdown_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_uart_proc_shutdown_req() failed(%d)", ret);
-        }
-        break;
-
-    default:
-        LOG_W(common, "invalid cmd type(%d)", m2s_info->cmd_hdr.type);
-        ret = -1;
-        break;
-    }
-
-    return ret;
-}
 
 static void swi_uart_m2s_task(void* param)
 {
     swi_m2s_info_t* m2s_info = (swi_m2s_info_t*)param;
     int32_t ret;
+    static uint8_t received_msg[sizeof(mt7697_tx_raw_packet_t)] __attribute__((aligned(4)));
+    mt7697_cmd_hdr_t *received_cmd = (mt7697_cmd_hdr_t *)received_msg;
 
     LOG_I(common, "start task('%s')", m2s_info->task.name);
     while (1) {
-        size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&m2s_info->cmd_hdr,
-                                              LEN_TO_WORD(sizeof(mt7697_cmd_hdr_t)));
-        if (words_read != LEN_TO_WORD(sizeof(mt7697_cmd_hdr_t))) {
+	    size_t num_words_to_read = LEN_TO_WORD(sizeof(mt7697_cmd_hdr_t));
+        size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)received_cmd,
+                                              num_words_to_read);
+        if (words_read != num_words_to_read) {
             LOG_W(common, "hw_read() failed(%d)", words_read);
             break;
         }
 
-        switch (m2s_info->cmd_hdr.grp) {
+        num_words_to_read = LEN_TO_WORD(received_cmd->len - sizeof(mt7697_cmd_hdr_t));
+        words_read = m2s_info->hw_read(m2s_info->rd_hndl,
+                                              (uint32_t*)(received_msg + sizeof(mt7697_cmd_hdr_t)),
+                                              num_words_to_read);
+        if (words_read != num_words_to_read) {
+	        LOG_W(common, "hw_read() failed(%d)", words_read);
+	        break;
+        }
+
+        switch (received_cmd->grp) {
         case MT7697_CMD_GRP_UART:
-            ret = swi_uart_proc_cmd(m2s_info);
-            if (ret < 0) {
-                LOG_W(common, "swi_uart_proc_cmd() failed(%d)", ret);
-            }
+	        ret = swi_process_cmd(m2s_info, mt7697_commands_uart, ARRAY_SIZE(mt7697_commands_uart),
+	                              received_cmd);
+	        if (ret < 0) {
+		        LOG_W(common, "Failure (%d) while processing a uart command", ret);
+	        }
             break;
 
         case MT7697_CMD_GRP_80211:
-            ret = swi_wifi_proc_cmd(m2s_info);
+	        ret = swi_process_cmd(m2s_info, mt7697_commands_wifi, mt7697_commands_wifi_count,
+	                              received_cmd);
             if (ret < 0) {
-                LOG_W(common, "swi_wifi_proc_cmd() failed(%d)", ret);
+	            LOG_W(common, "Failure (%d) while processing a wifi command", ret);
             }
             break;
 
         case MT7697_CMD_GRP_QUEUE:
         case MT7697_CMD_GRP_BT:
         default:
-            LOG_W(common, "invalid cmd grp(%d)", m2s_info->cmd_hdr.grp);
+	        LOG_W(common, "invalid cmd grp(%d)", received_cmd->grp);
             break;
         }
-
-        m2s_info->cmd_hdr.len = 0;
     }
 
     LOG_W(common, "end task('%s')", m2s_info->task.name);

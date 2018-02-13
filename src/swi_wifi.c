@@ -19,6 +19,91 @@
 #include "swi_spi_slave_queues.h"
 #include "swi_wifi.h"
 
+static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_set_channel_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_set_bssid_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_reload_settings_req(swi_m2s_info_t* m2s_info,
+                                                 mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_mac_addr_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_get_wireless_mode_req(swi_m2s_info_t* m2s_info,
+                                                   mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_set_wireless_mode_req(swi_m2s_info_t* m2s_info,
+                                                   mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_get_cfg_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_set_op_mode_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_get_listen_interval_req(swi_m2s_info_t* m2s_info,
+                                                     mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_set_listen_interval_req(swi_m2s_info_t* m2s_info,
+                                                     mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_get_security_mode_req(swi_m2s_info_t* m2s_info,
+                                                   mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info,
+                                                   mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_scan_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_scan_stop_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_disconnect_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static int32_t swi_wifi_proc_tx_raw_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd);
+static bool swi_wifi_validate_tx_raw_paket_size(const mt7697_cmd_hdr_t *cmd);
+
+const struct mt7697_command_entry mt7697_commands_wifi[] = {
+    CREATE_CMD_ENTRY(MT7697_CMD_SET_PMK_REQ,
+                     swi_wifi_proc_set_pmk_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_set_pmk_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SET_CHANNEL_REQ,
+                     swi_wifi_proc_set_channel_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_set_channel_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SET_BSSID_REQ,
+                     swi_wifi_proc_set_bssid_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_set_bssid_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SET_SSID_REQ,
+                     swi_wifi_proc_set_ssid_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_set_ssid_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_RELOAD_SETTINGS_REQ,
+                     swi_wifi_proc_reload_settings_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_reload_settings_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_MAC_ADDR_REQ,
+                     swi_wifi_proc_mac_addr_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_mac_addr_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_GET_WIRELESS_MODE_REQ,
+                     swi_wifi_proc_get_wireless_mode_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_get_wireless_mode_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SET_WIRELESS_MODE_REQ,
+                     swi_wifi_proc_set_wireless_mode_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_set_wireless_mode_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_GET_CFG_REQ,
+                     swi_wifi_proc_get_cfg_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_cfg_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SET_OP_MODE_REQ,
+                     swi_wifi_proc_set_op_mode_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_set_op_mode_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_GET_LISTEN_INTERVAL_REQ,
+                     swi_wifi_proc_get_listen_interval_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_get_listen_interval_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SET_LISTEN_INTERVAL_REQ,
+                     swi_wifi_proc_set_listen_interval_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_set_listen_interval_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_GET_SECURITY_MODE_REQ,
+                     swi_wifi_proc_get_security_mode_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_get_security_mode_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SET_SECURITY_MODE_REQ,
+                     swi_wifi_proc_set_security_mode_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_set_security_mode_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SCAN_REQ,
+                     swi_wifi_proc_scan_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_scan_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_SCAN_STOP,
+                     swi_wifi_proc_scan_stop_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_scan_stop_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_DISCONNECT_REQ,
+                     swi_wifi_proc_disconnect_req,
+                     CREATE_VALIDATOR_ABSOLUTE(sizeof(mt7697_disconnect_req_t))),
+    CREATE_CMD_ENTRY(MT7697_CMD_TX_RAW,
+                     swi_wifi_proc_tx_raw_req,
+                     CREATE_VALIDATOR_FUNCTION(swi_wifi_validate_tx_raw_paket_size)),
+};
+const size_t mt7697_commands_wifi_count = ARRAY_SIZE(mt7697_commands_wifi);
+
 mt7697_wifi_info_t wifi_info = {
     .if_idx = (uint16_t)-1,
     .channel = 0,
@@ -297,15 +382,14 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
-    uint8_t passphrase[WIFI_LENGTH_PASSPHRASE + 1] = {0};
-    uint8_t empty_pmk[WIFI_LENGTH_PASSPHRASE] = {0};
-    uint8_t pmk[WIFI_LENGTH_PASSPHRASE + 1] = {0};
-    size_t words_read;
-    uint32_t port;
+	mt7697_set_pmk_req_t* set_pmk_req = (mt7697_set_pmk_req_t*)cmd;
     int32_t ret = 0;
+    uint8_t passphrase[WIFI_LENGTH_PASSPHRASE + 1] = {0};
     uint8_t passphrase_length;
+    const uint32_t port = set_pmk_req->port;
+    uint8_t empty_pmk[sizeof(set_pmk_req->pmk)] = {0};
 
     mt7697_set_pmk_rsp_t* rsp = (mt7697_set_pmk_rsp_t*)swi_mem_pool_alloc_msg(
         &wifi_info.s2m_info->msg_pool_info, SWI_MEM_POOL_MSG_HI_PRIORITY, wifi_info.s2m_info->sendQ,
@@ -320,31 +404,10 @@ static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SET_PMK_RSP;
 
-    LOG_I(common, "--> SET PMK(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_pmk_req_t)) {
-        LOG_W(common, "invalid set PMK req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_set_pmk_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SET PMK");
 
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)pmk,
-                                   LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE));
-    if (words_read != LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE)) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read,
-              LEN_TO_WORD(WIFI_LENGTH_PASSPHRASE));
-        ret = -1;
-        goto cleanup;
-    }
-    LOG_I(common, "PMK ('%s')", pmk);
+    memcpy(passphrase,  set_pmk_req->pmk, sizeof(set_pmk_req->pmk));
+    LOG_I(common, "PMK ('%s')", passphrase);
 
     LOG_I(common, "PMK port(%d)", port);
     if (!swi_wifi_validate_port(port)) {
@@ -360,9 +423,9 @@ static int32_t swi_wifi_proc_set_pmk_req(swi_m2s_info_t* m2s_info)
     }
     LOG_I(common, "Curr PMK ('%s')", passphrase);
 
-    if (memcmp(pmk, passphrase, WIFI_LENGTH_PASSPHRASE)) {
-        if (memcmp(pmk, empty_pmk, WIFI_LENGTH_PASSPHRASE)) {
-            ret = wifi_config_set_wpa_psk_key(port, pmk, WIFI_LENGTH_PASSPHRASE);
+    if (passphrase_length != sizeof(set_pmk_req->pmk) || memcmp(set_pmk_req->pmk, passphrase, sizeof(set_pmk_req->pmk))) {
+        if (memcmp(set_pmk_req->pmk, empty_pmk, WIFI_LENGTH_PASSPHRASE)) {
+            ret = wifi_config_set_wpa_psk_key(port, set_pmk_req->pmk, WIFI_LENGTH_PASSPHRASE);
             if (ret < 0) {
                 LOG_W(common, "wifi_config_set_wpa_psk_key() failed(%d)", ret);
                 goto cleanup;
@@ -401,9 +464,9 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_set_channel_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_set_channel_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
-    size_t words_read;
+	mt7697_set_channel_req_t* set_channel_req = (mt7697_set_channel_req_t*)cmd;
     uint32_t ch;
     uint32_t port;
     int32_t ret = 0;
@@ -421,29 +484,10 @@ static int32_t swi_wifi_proc_set_channel_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SET_CHANNEL_RSP;
 
-    LOG_I(common, "--> SET CHANNEL(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_channel_req_t)) {
-        LOG_W(common, "invalid set CHANNEL req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_set_channel_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SET CHANNEL(%d)", cmd->len);
 
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&ch,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
+    port = set_channel_req->port;
+    ch = set_channel_req->ch;
 
     ret = wifi_config_get_channel(port, &wifi_info.channel);
     if (ret < 0) {
@@ -489,10 +533,9 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_set_bssid_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_set_bssid_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
-    uint8_t bssid[WIFI_MAC_ADDRESS_LENGTH] = {0};
-    size_t words_read;
+	mt7697_set_bssid_req_t* set_bssid_req = (mt7697_set_bssid_req_t*)cmd;
     int32_t ret = 0;
 
     mt7697_set_bssid_rsp_t* rsp = (mt7697_set_bssid_rsp_t*)swi_mem_pool_alloc_msg(
@@ -508,25 +551,10 @@ static int32_t swi_wifi_proc_set_bssid_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SET_BSSID_RSP;
 
-    LOG_I(common, "--> SET BSSID(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_bssid_req_t)) {
-        LOG_W(common, "invalid set BSSID req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_set_bssid_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SET BSSID(%d)", cmd->len);
+    LOG_HEXDUMP_I(common, "BSSID", set_bssid_req->bssid, WIFI_MAC_ADDRESS_LENGTH);
 
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)bssid,
-                                   LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH));
-    if (words_read != LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH)) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read,
-              LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH));
-        ret = -1;
-        goto cleanup;
-    }
-    LOG_HEXDUMP_I(common, "BSSID", bssid, WIFI_MAC_ADDRESS_LENGTH);
-
-    ret = wifi_config_set_bssid(bssid);
+    ret = wifi_config_set_bssid(set_bssid_req->bssid);
     if (ret < 0) {
         LOG_W(common, "wifi_config_set_bssid() failed(%d)", ret);
         goto cleanup;
@@ -546,11 +574,11 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_set_ssid_req_t* set_ssid_req = (mt7697_set_ssid_req_t*)cmd;
     uint8_t ssid[WIFI_MAX_LENGTH_OF_SSID + 1] = {0};
     uint8_t curr_ssid[WIFI_MAX_LENGTH_OF_SSID + 1] = {0};
-    size_t words_read;
     uint32_t ssid_len;
     uint32_t port;
     int32_t ret = 0;
@@ -569,38 +597,11 @@ static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SET_SSID_RSP;
 
-    LOG_I(common, "--> SET SSID(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_ssid_req_t)) {
-        LOG_W(common, "invalid set BSSID req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_set_ssid_rsp_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SET SSID(%d)", cmd->len);
 
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&ssid_len,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)ssid,
-                                   LEN_TO_WORD(WIFI_MAX_LENGTH_OF_SSID));
-    if (words_read != LEN_TO_WORD(WIFI_MAX_LENGTH_OF_SSID)) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read,
-              LEN_TO_WORD(WIFI_MAX_LENGTH_OF_SSID));
-        ret = -1;
-        goto cleanup;
-    }
+    port = set_ssid_req->port;
+    ssid_len = set_ssid_req->len;
+    memcpy(ssid, set_ssid_req->ssid, WIFI_MAX_LENGTH_OF_SSID);
 
     LOG_I(common, "SSID len(%u)", ssid_len);
     if (ssid_len > WIFI_MAX_LENGTH_OF_SSID) {
@@ -622,7 +623,6 @@ static int32_t swi_wifi_proc_set_ssid_req(swi_m2s_info_t* m2s_info)
         goto cleanup;
     }
 
-    ssid[ssid_len] = '\0';
     curr_ssid[curr_ssid_len] = '\0';
     LOG_I(common, "SSID curr/set('%s'/'%s')", curr_ssid, ssid);
     if ((ssid_len != curr_ssid_len) || memcmp(ssid, curr_ssid, ssid_len)) {
@@ -649,8 +649,10 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_reload_settings_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_reload_settings_req(swi_m2s_info_t* m2s_info,
+                                                 mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_reload_settings_req_t* reload_settings_req = (mt7697_reload_settings_req_t*)cmd;
     uint32_t if_idx;
     int32_t ret = 0;
 
@@ -663,26 +665,13 @@ static int32_t swi_wifi_proc_reload_settings_req(swi_m2s_info_t* m2s_info)
         goto cleanup;
     }
 
-    LOG_I(common, "--> RELOAD SETTINGS(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_reload_settings_req_t)) {
-        LOG_W(common, "invalid reload settings req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_reload_settings_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> RELOAD SETTINGS(%d)", cmd->len);
 
     rsp->cmd.len = sizeof(mt7697_reload_settings_rsp_t);
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_RELOAD_SETTINGS_RSP;
 
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&if_idx,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
+    if_idx = reload_settings_req->if_idx;
     LOG_I(common, "if idx(%d)", if_idx);
     wifi_info.if_idx = if_idx;
 
@@ -711,8 +700,9 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_mac_addr_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_mac_addr_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_mac_addr_req_t* mac_addr_req = (mt7697_mac_addr_req_t*)cmd;
     uint8_t mac_addr[WIFI_MAC_ADDRESS_LENGTH];
     uint32_t port;
     int32_t ret = 0;
@@ -730,22 +720,9 @@ static int32_t swi_wifi_proc_mac_addr_req(swi_m2s_info_t* m2s_info)
     rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
     rsp->rsp.cmd.type = MT7697_CMD_MAC_ADDR_RSP;
 
-    LOG_I(common, "--> GET MAC ADDRESS(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_mac_addr_req_t)) {
-        LOG_W(common, "invalid MAC address req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_mac_addr_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> GET MAC ADDRESS(%d)", cmd->len);
 
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port,
-                                          LEN_TO_WORD(sizeof(port)));
-    if (words_read != LEN_TO_WORD(sizeof(port))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(port)));
-        ret = -1;
-        goto cleanup;
-    }
-
+    port = mac_addr_req->port;
     if (!swi_wifi_validate_port(port)) {
         LOG_W(common, "invalid port(%d)", port);
         ret = -1;
@@ -776,8 +753,10 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_get_wireless_mode_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_get_wireless_mode_req(swi_m2s_info_t* m2s_info,
+                                                   mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_get_wireless_mode_req_t* get_wireless_mode_req = (mt7697_get_wireless_mode_req_t*)cmd;
     wifi_phy_mode_t mode;
     uint32_t port;
     int32_t ret = 0;
@@ -795,21 +774,8 @@ static int32_t swi_wifi_proc_get_wireless_mode_req(swi_m2s_info_t* m2s_info)
     rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
     rsp->rsp.cmd.type = MT7697_CMD_GET_WIRELESS_MODE_RSP;
 
-    LOG_I(common, "--> GET WIRELESS MODE(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_get_wireless_mode_req_t)) {
-        LOG_W(common, "invalid wireless mode req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_get_wireless_mode_req_t));
-        ret = -1;
-        goto cleanup;
-    }
-
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> GET WIRELESS MODE(%d)", cmd->len);
+    port = get_wireless_mode_req->port;
 
     if (!swi_wifi_validate_port(port)) {
         LOG_W(common, "invalid port(%d)", port);
@@ -841,8 +807,10 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_set_wireless_mode_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_set_wireless_mode_req(swi_m2s_info_t* m2s_info,
+                                                   mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_set_wireless_mode_req_t* set_wireless_mode_req = (mt7697_set_wireless_mode_req_t*)cmd;
     uint32_t port;
     uint32_t mode;
     int32_t ret = 0;
@@ -860,29 +828,9 @@ static int32_t swi_wifi_proc_set_wireless_mode_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SET_WIRELESS_MODE_RSP;
 
-    LOG_I(common, "--> SET WIRELESS MODE(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_wireless_mode_req_t)) {
-        LOG_W(common, "invalid wireless mode req len(%d != %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_set_wireless_mode_req_t));
-        ret = -1;
-        goto cleanup;
-    }
-
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&mode,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SET WIRELESS MODE(%d)", cmd->len);
+    port = set_wireless_mode_req->port;
+    mode = set_wireless_mode_req->mode;
 
     if (!swi_wifi_validate_port(port)) {
         LOG_W(common, "invalid port(%d)", port);
@@ -911,7 +859,7 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_get_cfg_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_get_cfg_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
     int32_t ret = 0;
 
@@ -928,13 +876,7 @@ static int32_t swi_wifi_proc_get_cfg_req(swi_m2s_info_t* m2s_info)
     cfg_rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
     cfg_rsp->rsp.cmd.type = MT7697_CMD_GET_CFG_RSP;
 
-    LOG_I(common, "--> GET CONFIG(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_cfg_req_t)) {
-        LOG_W(common, "invalid cfg req len(%u != %u)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_cfg_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> GET CONFIG(%d)", cmd->len);
 
     ret = wifi_config_get_opmode(&cfg_rsp->cfg.opmode);
     if (ret < 0) {
@@ -1039,8 +981,9 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_set_opmode_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_set_op_mode_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_set_op_mode_req_t* set_op_mode_req = (mt7697_set_op_mode_req_t*)cmd;
     uint32_t opmode;
     int32_t ret = 0;
     uint8_t curr_opmode;
@@ -1058,21 +1001,9 @@ static int32_t swi_wifi_proc_set_opmode_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SET_OP_MODE_RSP;
 
-    LOG_I(common, "--> SET OP MODE(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_op_mode_req_t)) {
-        LOG_W(common, "invalid set opmode req len(%u != %u)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_set_op_mode_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SET OP MODE(%d)", cmd->len);
 
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&opmode,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
+    opmode = set_op_mode_req->opmode;
 
     ret = wifi_config_get_opmode(&curr_opmode);
     if (ret < 0) {
@@ -1116,7 +1047,8 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_get_listen_interval_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_get_listen_interval_req(swi_m2s_info_t* m2s_info,
+                                                     mt7697_cmd_hdr_t* cmd)
 {
     int32_t ret = 0;
     uint8_t listen_interval;
@@ -1134,13 +1066,7 @@ static int32_t swi_wifi_proc_get_listen_interval_req(swi_m2s_info_t* m2s_info)
     rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
     rsp->rsp.cmd.type = MT7697_CMD_GET_LISTEN_INTERVAL_RSP;
 
-    LOG_I(common, "--> GET LISTEN INTERVAL(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_get_listen_interval_req_t)) {
-        LOG_W(common, "invalid get listen interval req len(%u != %u)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_get_listen_interval_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> GET LISTEN INTERVAL(%d)", cmd->len);
 
     ret = wifi_config_get_listen_interval(&listen_interval);
     if (ret < 0) {
@@ -1165,8 +1091,11 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_set_listen_interval_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_set_listen_interval_req(swi_m2s_info_t* m2s_info,
+                                                     mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_set_listen_interval_req_t* set_listen_interval_req =
+		(mt7697_set_listen_interval_req_t*)cmd;
     uint32_t interval = 0;
     int32_t ret = 0;
 
@@ -1184,21 +1113,9 @@ static int32_t swi_wifi_proc_set_listen_interval_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SET_LISTEN_INTERVAL_RSP;
 
-    LOG_I(common, "--> SET RX FILTER(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_listen_interval_req_t)) {
-        LOG_W(common, "invalid set listen interval req len(%u != %u)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_set_listen_interval_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SET RX FILTER(%d)", cmd->len);
 
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&interval,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
+    interval = set_listen_interval_req->interval;
 
     LOG_I(common, "set rx filter(0x%u08x)", interval);
     ret = wifi_config_set_listen_interval(interval);
@@ -1221,8 +1138,10 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_get_security_mode_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_get_security_mode_req(swi_m2s_info_t* m2s_info,
+                                                   mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_get_security_mode_req_t* get_security_mode_req = (mt7697_get_security_mode_req_t*)cmd;
     wifi_auth_mode_t auth_mode;
     wifi_encrypt_type_t encrypt_type;
     uint32_t port;
@@ -1241,21 +1160,13 @@ static int32_t swi_wifi_proc_get_security_mode_req(swi_m2s_info_t* m2s_info)
     rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
     rsp->rsp.cmd.type = MT7697_CMD_GET_SECURITY_MODE_RSP;
 
-    LOG_I(common, "--> GET SECURITY MODE(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_get_security_mode_req_t)) {
-        LOG_W(common, "invalid get security mode req len(%u != %u)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_get_security_mode_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> GET SECURITY MODE(%d)", cmd->len);
 
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
+    port = get_security_mode_req->port;
+    /*
+     * TODO: It seems that get_security_mode_req->if_idx is never used. Is this is bug or a protocol
+     * design flaw?
+     */
 
     if (!swi_wifi_validate_port(port)) {
         LOG_W(common, "invalid port(%d)", port);
@@ -1289,11 +1200,15 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info,
+                                                   mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_set_security_mode_req_t* set_security_mode_req = (mt7697_set_security_mode_req_t*)cmd;
     uint32_t port;
-    uint32_t auth_mode, curr_auth_mode;
-    uint32_t encrypt_type, curr_encrypt_type;
+    wifi_auth_mode_t curr_auth_mode;
+    wifi_auth_mode_t auth_mode;
+    wifi_encrypt_type_t curr_encrypt_type;
+    wifi_encrypt_type_t encrypt_type;
     int32_t ret = 0;
 
     mt7697_set_security_mode_rsp_t* rsp = (mt7697_set_security_mode_rsp_t*)swi_mem_pool_alloc_msg(
@@ -1309,51 +1224,26 @@ static int32_t swi_wifi_proc_set_security_mode_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SET_SECURITY_MODE_RSP;
 
-    LOG_I(common, "--> SET SECURITY MODE(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_set_security_mode_req_t)) {
-        LOG_W(common, "invalid set security mode req len(%u != %u)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_set_security_mode_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SET SECURITY MODE(%d)", cmd->len);
 
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port,
-                                          LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
+    port = set_security_mode_req->port;
     if (!swi_wifi_validate_port(port)) {
         LOG_W(common, "invalid port(%d)", port);
         ret = -1;
         goto cleanup;
     }
 
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&auth_mode,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&encrypt_type,
-                                   LEN_TO_WORD(sizeof(uint32_t)));
-    if (words_read != LEN_TO_WORD(sizeof(uint32_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(uint32_t)));
-        ret = -1;
-        goto cleanup;
-    }
-    LOG_I(common, "auth mode curr/set(%d/%d), encrypt type curr/set(%d/%d)",
-        curr_auth_mode, auth_mode, curr_encrypt_type, encrypt_type);
+    auth_mode = set_security_mode_req->auth_mode;
+    encrypt_type = set_security_mode_req->encrypt_type;
 
     ret = wifi_config_get_security_mode(port, &curr_auth_mode, &curr_encrypt_type);
     if (ret < 0) {
         LOG_W(common, "wifi_config_get_security_mode() failed(%d)", ret);
         goto cleanup;
     }
+
+    LOG_I(common, "auth mode curr/set(%d/%d), encrypt type curr/set(%d/%d)",
+          curr_auth_mode, auth_mode, curr_encrypt_type, encrypt_type);
 
     if ((curr_auth_mode != auth_mode) || (curr_encrypt_type != encrypt_type)) {
         ret = wifi_config_set_security_mode(port, auth_mode, encrypt_type);
@@ -1379,9 +1269,9 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_scan_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_scan_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
-    mt7697_scan_req_t scan_req;
+	mt7697_scan_req_t* scan_req = (mt7697_scan_req_t*)cmd;
     int32_t ret = 0;
 
     mt7697_scan_rsp_t* rsp = (mt7697_scan_rsp_t*)swi_mem_pool_alloc_msg(
@@ -1397,33 +1287,17 @@ static int32_t swi_wifi_proc_scan_req(swi_m2s_info_t* m2s_info)
     rsp->rsp.cmd.grp = MT7697_CMD_GRP_80211;
     rsp->rsp.cmd.type = MT7697_CMD_SCAN_RSP;
 
-    LOG_I(common, "--> SCAN(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_scan_req_t)) {
-        LOG_W(common, "invalid scan req len(%u != %u)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_scan_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SCAN(%d)", cmd->len);
 
-    size_t words_read = m2s_info->hw_read(
-        m2s_info->rd_hndl, (uint32_t*)&scan_req.if_idx,
-        LEN_TO_WORD(m2s_info->cmd_hdr.len - sizeof(mt7697_cmd_hdr_t)));
-    if (words_read != LEN_TO_WORD(m2s_info->cmd_hdr.len - sizeof(mt7697_cmd_hdr_t))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read,
-              LEN_TO_WORD(m2s_info->cmd_hdr.len - sizeof(mt7697_cmd_hdr_t)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    LOG_I(common, "if idx(%d)", scan_req.if_idx);
-    wifi_info.if_idx = scan_req.if_idx;
+    LOG_I(common, "if idx(%d)", scan_req->if_idx);
+    wifi_info.if_idx = scan_req->if_idx;
     rsp->if_idx = wifi_info.if_idx;
 
-    LOG_I(common, "SSID (%u/'%s')", scan_req.ssid_len, scan_req.ssid);
-    LOG_HEXDUMP_I(common, "BSSID", scan_req.bssid, WIFI_MAC_ADDRESS_LENGTH);
-    ret = wifi_connection_start_scan(scan_req.ssid, scan_req.ssid_len,
-                                     scan_req.bssid_len ? scan_req.bssid : NULL, scan_req.mode,
-                                     scan_req.option);
+    LOG_I(common, "SSID (%u/'%s')", scan_req->ssid_len, scan_req->ssid);
+    LOG_HEXDUMP_I(common, "BSSID", scan_req->bssid, WIFI_MAC_ADDRESS_LENGTH);
+    ret = wifi_connection_start_scan(scan_req->ssid, scan_req->ssid_len,
+                                     scan_req->bssid_len ? scan_req->bssid : NULL, scan_req->mode,
+                                     scan_req->option);
     if (ret < 0) {
         LOG_E(common, "wifi_connection_start_scan() failed(%d)", ret);
         goto cleanup;
@@ -1443,7 +1317,7 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_scan_stop_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_scan_stop_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
     int32_t ret = 0;
 
@@ -1460,12 +1334,7 @@ static int32_t swi_wifi_proc_scan_stop_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_SCAN_STOP_RSP;
 
-    LOG_I(common, "--> SCAN STOP(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len != sizeof(mt7697_scan_stop_t)) {
-        LOG_W(common, "invalid len(%d != %d)", m2s_info->cmd_hdr.len, sizeof(mt7697_scan_stop_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> SCAN STOP(%d)", cmd->len);
 
     LOG_I(common, "stop scan");
     ret = wifi_connection_stop_scan();
@@ -1488,10 +1357,9 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_disconnect_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_disconnect_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
-    uint8_t addr[LEN32_ALIGNED(WIFI_MAC_ADDRESS_LENGTH)];
-    size_t words_read;
+	mt7697_disconnect_req_t* disconnect_req = (mt7697_disconnect_req_t*)cmd;
     uint32_t port;
     int32_t ret = 0;
 
@@ -1508,29 +1376,9 @@ static int32_t swi_wifi_proc_disconnect_req(swi_m2s_info_t* m2s_info)
     rsp->cmd.grp = MT7697_CMD_GRP_80211;
     rsp->cmd.type = MT7697_CMD_DISCONNECT_RSP;
 
-    LOG_I(common, "--> DISCONNECT(%d)", m2s_info->cmd_hdr.len);
-    if (m2s_info->cmd_hdr.len < sizeof(mt7697_disconnect_req_t)) {
-        LOG_W(common, "invalid len(%d < %d)", m2s_info->cmd_hdr.len,
-              sizeof(mt7697_disconnect_req_t));
-        ret = -1;
-        goto cleanup;
-    }
+    LOG_I(common, "--> DISCONNECT(%d)", cmd->len);
 
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)&port, LEN_TO_WORD(sizeof(port)));
-    if (words_read != LEN_TO_WORD(sizeof(port))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(port)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)addr,
-                                   LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH));
-    if (words_read != LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH)) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read,
-              LEN_TO_WORD(WIFI_MAC_ADDRESS_LENGTH));
-        ret = -1;
-        goto cleanup;
-    }
+    port = disconnect_req->port;
 
     LOG_I(common, "port(%u)", port);
     if (!swi_wifi_validate_port(port)) {
@@ -1540,8 +1388,8 @@ static int32_t swi_wifi_proc_disconnect_req(swi_m2s_info_t* m2s_info)
     }
 
     if (port == WIFI_PORT_AP) {
-        LOG_HEXDUMP_I(common, "BSSID", addr, WIFI_MAC_ADDRESS_LENGTH);
-        ret = wifi_connection_disconnect_sta(addr);
+        LOG_HEXDUMP_I(common, "BSSID", disconnect_req->addr, WIFI_MAC_ADDRESS_LENGTH);
+        ret = wifi_connection_disconnect_sta(disconnect_req->addr);
         if (ret < 0) {
             LOG_W(common, "wifi_connection_disconnect_sta() failed(%d)", ret);
             goto cleanup;
@@ -1571,36 +1419,17 @@ cleanup:
     return ret;
 }
 
-static int32_t swi_wifi_proc_tx_raw_req(swi_m2s_info_t* m2s_info)
+static int32_t swi_wifi_proc_tx_raw_req(swi_m2s_info_t* m2s_info, mt7697_cmd_hdr_t* cmd)
 {
+	mt7697_tx_raw_packet_t* tx_raw_packet = (mt7697_tx_raw_packet_t*)cmd;
     uint32_t tx_len;
     int32_t ret = 0;
 
 //    LOG_I(common, "--> TX(%d)", len);
-    size_t words_read = m2s_info->hw_read(m2s_info->rd_hndl, &tx_len, LEN_TO_WORD(sizeof(tx_len)));
-    if (words_read != LEN_TO_WORD(sizeof(tx_len))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(sizeof(tx_len)));
-        ret = -1;
-        goto cleanup;
-    }
-
-    words_read = m2s_info->hw_read(m2s_info->rd_hndl, (uint32_t*)wifi_info.tx_data,
-                                   LEN_TO_WORD(LEN32_ALIGNED(tx_len)));
-    if (words_read != LEN_TO_WORD(LEN32_ALIGNED(tx_len))) {
-        LOG_W(common, "hw_read() failed(%d != %d)", words_read, LEN_TO_WORD(LEN32_ALIGNED(tx_len)));
-        ret = -1;
-        goto cleanup;
-    }
-
-//    printf("--> Tx(%d)\n", tx_len);
-    if (!tx_len || tx_len > sizeof(wifi_info.tx_data)) {
-        LOG_W(common, "invalid Tx len(%d)", tx_len);
-        ret = -1;
-        goto cleanup;
-    }
+    tx_len = tx_raw_packet->len;
 
 //    LOG_HEXDUMP_I(common, "Tx packet", wifi_info.tx_data, tx_len);
-    ret = ethernet_raw_pkt_sender(wifi_info.tx_data, tx_len, wifi_info.netif);
+    ret = ethernet_raw_pkt_sender(tx_raw_packet->data, tx_len, wifi_info.netif);
     if (ret < 0) {
         LOG_W(common, "ethernet_raw_pkt_sender() failed(%d)", ret);
         goto cleanup;
@@ -1612,163 +1441,12 @@ cleanup:
     return ret;
 }
 
-int32_t swi_wifi_proc_cmd(swi_m2s_info_t* m2s_info)
+static bool swi_wifi_validate_tx_raw_paket_size(const mt7697_cmd_hdr_t *cmd)
 {
-    int32_t ret = 0;
-
-    switch (m2s_info->cmd_hdr.type) {
-    case MT7697_CMD_SET_PMK_REQ:
-        ret = swi_wifi_proc_set_pmk_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_set_pmk_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SET_CHANNEL_REQ:
-        ret = swi_wifi_proc_set_channel_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_set_channel_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SET_BSSID_REQ:
-        ret = swi_wifi_proc_set_bssid_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_set_bssid_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SET_SSID_REQ:
-        ret = swi_wifi_proc_set_ssid_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_set_ssid_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_RELOAD_SETTINGS_REQ:
-        ret = swi_wifi_proc_reload_settings_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_reload_settings_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_MAC_ADDR_REQ:
-        ret = swi_wifi_proc_mac_addr_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_mac_addr_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_GET_WIRELESS_MODE_REQ:
-        ret = swi_wifi_proc_get_wireless_mode_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_get_wireless_mode_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SET_WIRELESS_MODE_REQ:
-        ret = swi_wifi_proc_set_wireless_mode_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_set_wireless_mode_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_GET_CFG_REQ:
-        ret = swi_wifi_proc_get_cfg_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_get_cfg_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SET_OP_MODE_REQ:
-        ret = swi_wifi_proc_set_opmode_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_set_opmode_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_GET_LISTEN_INTERVAL_REQ:
-        ret = swi_wifi_proc_get_listen_interval_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_get_listen_interval_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SET_LISTEN_INTERVAL_REQ:
-        ret = swi_wifi_proc_set_listen_interval_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_set_listen_interval_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SET_SECURITY_MODE_REQ:
-        ret = swi_wifi_proc_set_security_mode_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_set_security_mode_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_GET_SECURITY_MODE_REQ:
-        ret = swi_wifi_proc_get_security_mode_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_get_security_mode_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SCAN_REQ:
-        ret = swi_wifi_proc_scan_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_scan_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_SCAN_STOP:
-        ret = swi_wifi_proc_scan_stop_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_scan_stop_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_DISCONNECT_REQ:
-        ret = swi_wifi_proc_disconnect_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_disconnect_req() failed(%d)", ret);
-        }
-
-        break;
-
-    case MT7697_CMD_TX_RAW:
-        ret = swi_wifi_proc_tx_raw_req(m2s_info);
-        if (ret) {
-            LOG_W(common, "swi_wifi_proc_tx_raw_req() failed(%d)", ret);
-        }
-
-        break;
-
-    default:
-        LOG_W(common, "invalid cmd type(%d)", m2s_info->cmd_hdr.type);
-        ret = -1;
-        break;
-    }
-
-    return ret;
+	const mt7697_tx_raw_packet_t* tx_raw_packet = (const mt7697_tx_raw_packet_t*)cmd;
+	return tx_raw_packet->len == (tx_raw_packet->cmd.len - offsetof(mt7697_tx_raw_packet_t, data));
 }
+
 
 int32_t swi_wifi_init(swi_s2m_info_t* s2m_info)
 {

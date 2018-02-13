@@ -5,7 +5,7 @@
 #include "event_groups.h"
 
 #include "swi_task_info.h"
-#include "swi_cmd_defs.h"
+#include "swi_messaging.h"
 
 #define SWI_M2S_BLOCKED_READER (1 << 0)
 #define SWI_M2S_UNBLOCK_READER (1 << 1)
@@ -15,7 +15,6 @@ typedef void (*rx_op)(void*);
 
 typedef struct _swi_m2s_info_t {
     swi_queue_task_t   task;
-    mt7697_cmd_hdr_t   cmd_hdr;
     EventGroupHandle_t evt_grp;
     read_op            hw_read;
     rx_op              hw_rx;
